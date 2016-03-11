@@ -3,6 +3,7 @@
 #BASIC CONSTANTS
 MLV_DUMP="./mlv_dump" #Path to MLV_DUMP location.
 DEPS="imagemagick dcraw ffmpeg" #Dependency package names (Debian). List with -K option.
+VERSION="1.2.0" #Version string.
 
 #MODDABLE CONSTANTS
 OUTDIR="$(pwd)"
@@ -18,18 +19,22 @@ DEPTH="-4"
 WHITE="-r 1 1 1 1"
 LUT=""
 isLUT=false
+NOISE_REDUC=""
 
 
 help () {
 	echo -e "Usage:\n	\033[1m./convmlv.sh\033[0m [OPTIONS] \033[2mmlv_files\033[0m\n"
 			
-	echo -e "Info:\n	A script allowing you to convert .MLV files into TIFF + JPG (proxy) sequences and/or a Prores 4444 .mov,
-	with an optional H.264 .mp4 preview. Many useful options such as gamma, highlight reconstruction, and bit depth are exposed.\n"
+	echo -e "INFO:\n	A script allowing you to convert .MLV files into TIFF + JPG (proxy) sequences and/or a Prores 4444 .mov,
+	with an optional H.264 .mp4 preview. Many useful options are exposed.\n"
 
-	echo -e "Dependencies:\n	-mlv_dump: For MLV --> DNG.\n	-dcraw: For DNG --> TIFF.\n	-ffmpeg: For .mov/mp4 creation.\n"
+	echo -e "DEPENDENCIES:\n	-mlv_dump: For MLV --> DNG.\n	-dcraw: For DNG --> TIFF.\n	-ffmpeg: For .mov/mp4 creation.\n"
+	
+	echo -e "VERSION: ${VERSION}\n"
 
 
 	echo -e "OPTIONS:"
+	echo -e "	-V   Version - Print out version string."
 	echo -e "	-o   OUTDIR - The path in which files will be placed (no space btwn -o and path).\n"
 	echo -e "	-M   MLV_DUMP - The path to mlv_dump (no space btwn -M and path). Default is './mlv_dump'.\n"
 	
@@ -59,11 +64,14 @@ help () {
 	echo -e "	  --> It'll kind of ruin the point of RAW, though....\n"
 	
 	echo -e "	-W   WHITE - This is a modal white balance setting. Defaults to 2; 1 doesn't always work very well."
-	echo -e "	  --> Use -W<mode> (no space). 0: Auto WB. 1: Camera WB (If retrievable). 2: No WB Processing.\n"
+	echo -e "	  --> Use -W<mode> (no space). 0: Auto WB (PER IMAGE. BROKEN). 1: Camera WB (If retrievable). 2: No WB Processing.\n"
 	
 	echo -e "	-l   LUT - This is a path to the 3D LUT. Specify the path to the LUT to use it."
 	echo -e "	  --> Compatibility determined by ffmpeg (.cube is supported)."
-	echo -e "	  --> Path to LUT (no space between -l and path). Without specifying -l, no LUT will be applied."
+	echo -e "	  --> Path to LUT (no space between -l and path). Without specifying -l, no LUT will be applied.\n"
+	
+	echo -e "	-n   NOISE_REDUC - This is the threshold of wavelet denoising - specify to use."
+	echo -e "	  --> Use -n<number>. Defaults to no denoising. 150 tends to be a good setting; 350 starts to look strange.\n"
 }
 
 
@@ -91,6 +99,10 @@ for ARG in $*; do
 			fi
 			let ARGNUM--
 		fi
+		if [ `echo ${ARG} | cut -c2-2` = "v" ]; then
+			echo -e "convmlv: v${VERSION}"
+			let ARGNUM--
+		fi
 		if [ `echo ${ARG} | cut -c2-2` = "m" ]; then
 			HQ_MOV=true
 			let ARGNUM--
@@ -109,6 +121,11 @@ for ARG in $*; do
 		fi
 		if [ `echo ${ARG} | cut -c2-2` = "o" ]; then
 			OUTDIR=`echo ${ARG} | cut -c3-${#ARG}`
+			let ARGNUM--
+		fi
+		if [ `echo ${ARG} | cut -c2-2` = "n" ]; then
+			setting=`echo ${ARG} | cut -c3-${#ARG}`
+			NOISE_REDUC="-n ${setting}"
 			let ARGNUM--
 		fi
 		if [ `echo ${ARG} | cut -c2-2` = "h" ]; then
@@ -170,6 +187,12 @@ for ARG in $*; do
 		continue
 	fi
 	
+	#Check that file exists.
+	if [ ! -f $ARG ]; then
+		echo "File ${ARG} not found!"
+		exit 1
+	fi
+	
 	
 	echo -e "\n\e[1mFiles Left to Process: \e[0m${ARGNUM}\n"
 	
@@ -195,7 +218,7 @@ for ARG in $*; do
 	trap "rm -rf ${TMP} ${NEW} ${PROXY}; exit 1" INT
 	i=0
 	for file in $TMP/*.dng; do
-		dcraw -q $DEMO_MODE $WHITE -H $HIGHLIGHT_MODE -g $GAMMA -o 0 $DEPTH -T "${file}"  > /dev/null
+		dcraw -q $DEMO_MODE $WHITE -H $HIGHLIGHT_MODE -g $GAMMA $NOISE_REDUC -o 0 $DEPTH -T "${file}"  > /dev/null
 		# -a gives auto white balance... Camera WB doesn't seem to be working properly :(. Other plausible default might be -r 1 1 1 1 .
 #					output=$(printf "${TMP}/pngs/${TRUNC_ARG}_%05d" ${i})
 #					darktable-cli "${file}" "000000.dng.xmp" "${output}.png" --hq 1 --core --conf plugins/imageio/format/png/bpp

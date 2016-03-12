@@ -2,8 +2,9 @@
 
 #BASIC CONSTANTS
 MLV_DUMP="./mlv_dump" #Path to MLV_DUMP location.
+MLV_BP="./mlv2badpixels.sh"
 DEPS="imagemagick dcraw ffmpeg" #Dependency package names (Debian). List with -K option.
-VERSION="1.2.0" #Version string.
+VERSION="1.3.0" #Version string.
 
 #MODDABLE CONSTANTS
 OUTDIR="$(pwd)"
@@ -13,13 +14,15 @@ PROXY_SCALE="50%"
 DEMO_MODE="1"
 HQ_MOV=false
 LQ_PROXY=false
-DELETE_TIFF=false
+DELETE_IMGS=false
 GAMMA="1 1"
 DEPTH="-4"
 WHITE="-r 1 1 1 1"
 LUT=""
 isLUT=false
 NOISE_REDUC=""
+BADPIXELS=""
+isBP=false
 
 
 help () {
@@ -28,7 +31,7 @@ help () {
 	echo -e "INFO:\n	A script allowing you to convert .MLV files into TIFF + JPG (proxy) sequences and/or a Prores 4444 .mov,
 	with an optional H.264 .mp4 preview. Many useful options are exposed.\n"
 
-	echo -e "DEPENDENCIES:\n	-mlv_dump: For MLV --> DNG.\n	-dcraw: For DNG --> TIFF.\n	-ffmpeg: For .mov/mp4 creation.\n"
+	echo -e "DEPENDENCIES:\n	-mlv_dump: For MLV --> DNG.\n	-dcraw: For DNG --> TIFF.\n	-ffmpeg: For .mov/mp4 creation.\n	-mlv2badpixels.sh: For badpixels removal.\n	-convert: Part of ImageMagick.\n"
 	
 	echo -e "VERSION: ${VERSION}\n"
 
@@ -37,6 +40,7 @@ help () {
 	echo -e "	-V   Version - Print out version string."
 	echo -e "	-o   OUTDIR - The path in which files will be placed (no space btwn -o and path).\n"
 	echo -e "	-M   MLV_DUMP - The path to mlv_dump (no space btwn -M and path). Default is './mlv_dump'.\n"
+	echo -e "	-B   MLV_BP - The path to mlv2badpixels.sh (by dfort). Default is './mlv2badpixels.sh'.\n"
 	
 	echo -e "	-H[0-9]   HIGHLIGHT_MODE - 3 to 9 does degrees of highlight reconstruction, 1 and 2 don't. 0 is default."
 	echo -e "	  --> Use -H<number> (no space).\n"
@@ -48,7 +52,7 @@ help () {
 	
 	echo -e "	-p   LQ_MOV - Use to create a low quality H.264 mp4 from the proxies.\n"
 	
-	echo -e "	-D   DELETE_TIFF - Use to delete not only TMP, but also the TIF and proxy sequences."
+	echo -e "	-D   DELETE_IMGS - Use to delete not only TMP, but also the TIF and proxy sequences."
 	echo -e "	  --> Useful if all you want are video files.\n"
 	
 	echo -e "	-d   DEMO_MODE - DCraw demosaicing mode. Higher modes are slower. 1 is default."
@@ -64,7 +68,7 @@ help () {
 	echo -e "	  --> It'll kind of ruin the point of RAW, though....\n"
 	
 	echo -e "	-W   WHITE - This is a modal white balance setting. Defaults to 2; 1 doesn't always work very well."
-	echo -e "	  --> Use -W<mode> (no space). 0: Auto WB (PER IMAGE. BROKEN). 1: Camera WB (If retrievable). 2: No WB Processing.\n"
+	echo -e "	  --> Use -W<mode> (no space). 0: Auto WB (BROKEN). 1: Camera WB (If retrievable). 2: No WB Processing.\n"
 	
 	echo -e "	-l   LUT - This is a path to the 3D LUT. Specify the path to the LUT to use it."
 	echo -e "	  --> Compatibility determined by ffmpeg (.cube is supported)."
@@ -72,6 +76,31 @@ help () {
 	
 	echo -e "	-n   NOISE_REDUC - This is the threshold of wavelet denoising - specify to use."
 	echo -e "	  --> Use -n<number>. Defaults to no denoising. 150 tends to be a good setting; 350 starts to look strange.\n"
+	
+	echo -e "	-b   BADPIXELS - Fix focus pixels issue using dfort's script."
+	echo -e "	  --> His file can be found at https://bitbucket.org/daniel_fort/ml-focus-pixels/src."
+}
+
+mkdirS() {
+	path=$1
+	
+	mkdir -p $path >/dev/null 2>/dev/null
+	OUT=$?
+	
+	if [[ $OUT != 0 ]]; then
+		while true; do
+			read -p "Overwrite ${path}? (y/n) " yn
+			case $yn in
+				[Yy]* ) rm -rf $path; mkdir -p $path >/dev/null 2>/dev/null
+				;;
+				[Nn]* ) echo -e "\n\e[0;31m\e[1mDirectory ${path} cannot be created.\e[0m\n"; exit 0
+				;;
+				* ) echo -e "\e[0;31m\e[1mPlease answer yes or no.\e[0m\n"
+				;;
+			esac
+		done
+	fi
+	
 }
 
 
@@ -116,7 +145,7 @@ for ARG in $*; do
 			let ARGNUM--
 		fi
 		if [ `echo ${ARG} | cut -c2-2` = "D" ]; then
-			DELETE_TIFF=true
+			DELETE_IMGS=true
 			let ARGNUM--
 		fi
 		if [ `echo ${ARG} | cut -c2-2` = "o" ]; then
@@ -184,54 +213,81 @@ for ARG in $*; do
 			isLUT=true
 			let ARGNUM--
 		fi
+		if [ `echo ${ARG} | cut -c2-2` = "b" ]; then
+			isBP=true
+			let ARGNUM--
+		fi
+		if [ `echo ${ARG} | cut -c2-2` = "B" ]; then
+			MLV_BP=`echo ${ARG} | cut -c3-${#ARG}`
+			if [ ! -f $MLV_BP ]; then
+				echo "mlv2badpixels.sh not found!!!"
+				echo $MLV_BP
+				exit 1
+			fi
+			let ARGNUM--
+		fi
 		continue
 	fi
 	
 	#Check that file exists.
 	if [ ! -f $ARG ]; then
-		echo "File ${ARG} not found!"
+		echo -e "\e[0;31m\e[1mFile ${ARG} not found!\e[0m\n"
 		exit 1
 	fi
 	
-	
-	echo -e "\n\e[1mFiles Left to Process: \e[0m${ARGNUM}\n"
+	echo -e "\n\e[1mFiles Left to Process: \e[0m${ARGNUM}"
 	
 	#Create directory structure.
-	mkdir -p $OUTDIR
+	mkdirS $OUTDIR
 	
 	TRUNC_ARG=`echo ${ARG} | cut -f 1 -d "."`
-	TMP="${OUTDIR}/tmp_${TRUNC_ARG}"
-	NEW="${OUTDIR}/${TRUNC_ARG}"
-	PROXY="${OUTDIR}/${TRUNC_ARG}_proxy"
+	FILE="${OUTDIR}/${TRUNC_ARG}"
+	
+	TMP="${FILE}/tmp_${TRUNC_ARG}"
+	TIFF="${FILE}/tiff_${TRUNC_ARG}"
+	PROXY="${FILE}/proxy_${TRUNC_ARG}"
 		
-	mkdir $TMP
+	mkdirS $TMP
+	mkdirS $TIFF
+	mkdirS $PROXY
+	
+	#Create badpixels file.
+	echo -e 
+	if [ $isBP ]; then
+		echo -e "\e[1m${TRUNC_ARG}:\e[0m Generating badpixels file..."
+		
+		bad_name="badpixels_${TRUNC_ARG}.txt"
+		$MLV_BP -o "${TMP}/${bad_name}" $ARG
+		
+		BADPIXELS="-P ${TMP}/${bad_name}"
+	fi
 	
 	#Dump to DNG sequence using mlv_dump
-	echo -e "\n\e[1m${TRUNC_ARG}:\e[0m Dumping to DNG Sequence...\n"
+	echo -e "\n\e[1m${TRUNC_ARG}:\e[0m Dumping to DNG Sequence..."
+	
+	if [ ! -f $MLV_DUMP ]; then
+		echo -e "\e[0;31m\e[1mmlv_dump not found at path ${MLV_DUMP}!!!\e[0m\n"
+		exit 1
+	fi
 
-	$MLV_DUMP $ARG -o "${TMP}/${TRUNC_ARG}_" --dng --no-cs > /dev/null
+	$MLV_DUMP $ARG -o "${TMP}/${TRUNC_ARG}_" --dng --no-cs >/dev/null 2>/dev/null
 	
 	FRAMES=`expr $(ls -1U ${TMP} | wc -l) - 1`
 
 	echo -e "\n\e[1m${TRUNC_ARG}:\e[0m Converting ${FRAMES} DNGs to TIFF...\n"
 
-	trap "rm -rf ${TMP} ${NEW} ${PROXY}; exit 1" INT
+	trap "rm -rf ${TMP} ${TIFF} ${PROXY}; exit 1" INT
 	i=0
 	for file in $TMP/*.dng; do
-		dcraw -q $DEMO_MODE $WHITE -H $HIGHLIGHT_MODE -g $GAMMA $NOISE_REDUC -o 0 $DEPTH -T "${file}"  > /dev/null
-		# -a gives auto white balance... Camera WB doesn't seem to be working properly :(. Other plausible default might be -r 1 1 1 1 .
-#					output=$(printf "${TMP}/pngs/${TRUNC_ARG}_%05d" ${i})
-#					darktable-cli "${file}" "000000.dng.xmp" "${output}.png" --hq 1 --core --conf plugins/imageio/format/png/bpp
+		dcraw -q $DEMO_MODE $BADPIXELS $WHITE -H $HIGHLIGHT_MODE -g $GAMMA $NOISE_REDUC -o 0 $DEPTH -T "${file}"
 		echo -e "\e[2K\rDNG Development (dcraw): Frame ${i}/${FRAMES}.\c"
 		let i++
 	done
 	
-	mkdir $TRUNC_ARG
-	
 	#Potentially apply a LUT.
 	if [ $isLUT = true ]; then
 		echo -e "\n\n\e[1m${TRUNC_ARG}:\e[0m Applying LUT to ${FRAMES} TIFFs...\n"
-		trap "rm -rf ${TMP} ${NEW} ${PROXY}; exit 1" INT
+		trap "rm -rf ${TMP} ${TIFF} ${PROXY}; exit 1" INT
 		i=0
 		for tiff in $TMP/*.tiff; do
 			output=$(printf "${TMP}/LUT_${TRUNC_ARG}_%06d" ${i})
@@ -244,16 +300,14 @@ for ARG in $*; do
 	
 	echo -e "\n\n\e[1m${TRUNC_ARG}:\e[0m Processing ${FRAMES} TIFFs & Generating Proxies...\n"
 	
-	mkdir $PROXY
-	
 	#Move tiffs into place and generate proxies.
-	trap "rm -rf ${TMP} ${NEW} ${PROXY}; exit" INT
+	trap "rm -rf ${TMP} ${TIFF} ${PROXY}; exit" INT
 	i=0
 	for tiff in $TMP/*.tiff; do
 		output=$(printf "${PROXY}/${TRUNC_ARG}_%06d" ${i})
 		convert -quiet $tiff -resize $PROXY_SCALE "${output}.jpg"  > /dev/null #PROXY GENERATION
 		
-		mv $tiff $NEW #TIFF MOVEMENT
+		mv $tiff $TIFF #TIFF MOVEMENT
 		
 		echo -e "\e[2K\rProxy Generation (IM): Frame ${i}/${FRAMES}.\c"
 				
@@ -261,27 +315,45 @@ for ARG in $*; do
 	done
 	
 	#Move .wav.
-	mv "${TMP}/${TRUNC_ARG}_.wav" $OUTDIR
+	if [ ! -f "${TMP}/${TRUNC_ARG}_.wav" ]; then
+		echo -e "\n*Not moving .wav, because it doesn't exist."
+	else
+		mv "${TMP}/${TRUNC_ARG}_.wav" $OUTDIR
+	fi
 
 	#Movie creation, for editing:
 
-	echo -e "\n\n\e[1m${TRUNC_ARG}:\e[0m Processing video options...\n"
+	echo -e "\n\n\e[1m${TRUNC_ARG}:\e[0m Processing video options..."
+	
+	VID="${FILE}/${TRUNC_ARG}"
 	
 	# --> Potentially create High Quality Prores 4444: 
-	if [ $HQ_MOV = true ]; then
-		ffmpeg -f image2 -i "${NEW}/${TRUNC_ARG}_%06d.tiff" -i "${OUTDIR}/${TRUNC_ARG}_.wav" -loglevel panic -stats -vcodec prores_ks -pix_fmt yuva444p10le -profile:v 4444 -c:a copy "${OUTDIR}/${TRUNC_ARG}_hq.mov"
+	if [ $HQ_MOV ]; then
+		echo -e "\n\e[1mHigh Quality (Prores 4444) Video: \e[0m"
+		if [ ! -f "${TMP}/${TRUNC_ARG}_.wav" ]; then
+			ffmpeg -f image2 -i "${TIFF}/${TRUNC_ARG}_%06d.tiff" -loglevel panic -stats -vcodec prores_ks -profile:v 4444 -alpha_bits 0 -vendor ap4h "${VID}_hq.mov"
+		else
+			ffmpeg -f image2 -i "${TIFF}/${TRUNC_ARG}_%06d.tiff" -i "${OUTDIR}/${TRUNC_ARG}_.wav" -loglevel panic -stats -vcodec prores_ks -alpha_bits 0 -vendor ap4h -c:a copy "${VID}_hq.mov"
+		fi
+		
 	fi
 	
 	# --> Potentially create proxy H.264: Highly unsuited for any color work; just a preview.
-	if [ $LQ_PROXY = true ]; then
-		ffmpeg -f image2 -i "${PROXY}/${TRUNC_ARG}_%06d.jpg" -i "${OUTDIR}/${TRUNC_ARG}_.wav" -loglevel panic -stats -c:v libx264 -preset fast -crf 23 -c:a mp3 "${OUTDIR}/${TRUNC_ARG}_lq.mp4"
+	if [ $LQ_PROXY ]; then
+		echo -e "\n\e[1mLow Quality (H.264) Video: \e[0m"
+		if [ ! -f "${TMP}/${TRUNC_ARG}_.wav" ]; then
+			ffmpeg -f image2 -i "${PROXY}/${TRUNC_ARG}_%06d.jpg" -loglevel panic -stats -c:v libx264 -preset fast -crf 23 "${VID}_lq.mp4"
+		else
+			ffmpeg -f image2 -i "${PROXY}/${TRUNC_ARG}_%06d.jpg" -i "${OUTDIR}/${TRUNC_ARG}_.wav" -loglevel panic -stats -c:v libx264 -preset fast -crf 23 -c:a mp3 "${VID}_lq.mp4"
+		fi
 	fi
 	
 	echo -e "\n\e[1mDeleting files.\e[0m\n"
 
 	#Potentially delete TIFFs and JPGs.
-	if [ $DELETE_TIFF = true ]; then
-		rm -rf $NEW
+	if [ $DELETE_IMGS = true ]; then
+		rm -rf $TIFF
+		rm -rf $PROXY
 	fi
 	
 	#Delete tmp

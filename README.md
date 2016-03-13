@@ -6,36 +6,38 @@ See [http://www.magiclantern.fm/forum/index.php?action=post;topic=16799.0;last_m
 
 Help page is below:
 
-```<br>
+<pre><br>
 
 Usage:
 	./convmlv.sh [OPTIONS] mlv_files
 
 INFO:
-	A script allowing you to convert .MLV files into TIFF + JPG (proxy) sequences and/or a Prores 4444 .mov,
+	A script allowing you to convert .MLV or .RAW files into TIFF + JPG (proxy) sequences and/or a Prores 4444 .mov,
 	with an optional H.264 .mp4 preview. Many useful options are exposed.
 
-DEPENDENCIES:
-	-mlv_dump: For MLV --> DNG.
-	-dcraw: For DNG --> TIFF.
-	-ffmpeg: For .mov/mp4 creation.
-	-mlv2badpixels.sh: For badpixels removal.
-	-convert: Part of ImageMagick.
+DEPENDENCIES: *If you don't use a feature, you don't need the dependency!
+	-mlv_dump: For DNG extraction from MLV. http://www.magiclantern.fm/forum/index.php?topic=7122.0
+	-raw2dng: For DNG extraction from RAW. http://www.magiclantern.fm/forum/index.php?topic=5404.0
+	-mlv2badpixels.sh: For bad pixel removal. https://bitbucket.org/daniel_fort/ml-focus-pixels/src
+	-dcraw: For RAW development.
+	-ffmpeg: For video creation.
+	-ImageMagick: Used for making proxy sequence.
+	-Python 3 + libs: Used for auto white balance.
 
-VERSION: 1.3.0
+VERSION: 1.4.0
 
 OPTIONS:
-	-V   Version - Print out version string.
-	-o   OUTDIR - The path in which files will be placed (no space btwn -o and path).
+	-v   version - Print out version string.
+	-o<path>   OUTDIR - The path in which files will be placed (no space btwn -o and path).
+	-M<path>   MLV_DUMP - The path to mlv_dump (no space btwn -M and path). Default is './mlv_dump'.
+	-R<path>   RAW_DUMP - The path to raw2dng (no space btwn -M and path). Default is './raw2dng'.
+	-y<path>   PYTHON - The path or command used to invoke Python. Defaults to python3.
+	-B<path>   MLV_BP - The path to mlv2badpixels.sh (by dfort). Default is './mlv2badpixels.sh'.
 
-	-M   MLV_DUMP - The path to mlv_dump (no space btwn -M and path). Default is './mlv_dump'.
-
-	-B   MLV_BP - The path to mlv2badpixels.sh (by dfort). Default is './mlv2badpixels.sh'.
-
-	-H[0-9]   HIGHLIGHT_MODE - 3 to 9 does degrees of highlight reconstruction, 1 and 2 don't. 0 is default.
+	-H[0:9]   HIGHLIGHT_MODE - 3 to 9 does degrees of colored highlight reconstruction, 1 and 2 allow clipping. 0 is default.
 	  --> Use -H<number> (no space).
 
-	-s[00-99]%   PROXY_SCALE - the size, in %, of the proxy output.
+	-s[0%:100%]   PROXY_SCALE - the size, in %, of the proxy output.
 	  --> Use -s<double-digit number>% (no space). 50% is default.
 
 	-m   HQ_MOV - Use to create a Prores 4444 file.
@@ -45,28 +47,35 @@ OPTIONS:
 	-D   DELETE_IMGS - Use to delete not only TMP, but also the TIF and proxy sequences.
 	  --> Useful if all you want are video files.
 
-	-d   DEMO_MODE - DCraw demosaicing mode. Higher modes are slower. 1 is default.
+	-d[0:3]   DEMO_MODE - DCraw demosaicing mode. Higher modes are slower. 1 is default.
 	  --> Use -d<mode> (no space). 0: Bilinear. 1: VNG (default). 2: PPG. 3: AHD.
 
-	-K   Package Deps - Lists dependecies. Works with apt-get.
-	  --> No operations will be done. Also, you must provide mlv_dump.
+	-K   Debian Package Deps - Lists dependecies. Works with apt-get on Debian; should be similar elsewhere.
+	  --> No operations will be done.
 
-	-g   GAMMA - This is a modal gamma curve that is applied to the image. 0 is default.
+	  --> Example: sudo apt-get install $ (./convmlv -K)
+
+	-Y   Python Deps - Lists Python dependencies. Works with pip.
+	  --> No operations will be done. 
+	  --> Example: sudo pip3 install $ (./convmlv -Y)
+
+	-g[0:4]   GAMMA - This is a modal gamma curve that is applied to the image. 0 is default.
 	  --> Use -g<mode> (no space). 0: Linear. 1: 2.2 (Adobe RGB). 2: 1.8 (ProPhoto RGB). 3: sRGB. 4: BT.709.
 
 	-P   DEPTH - Specifying this option will create an 8-bit output instead of a 16-bit output.
 	  --> It'll kind of ruin the point of RAW, though....
 
-	-W   WHITE - This is a modal white balance setting. Defaults to 2; 1 doesn't always work very well.
-	  --> Use -W<mode> (no space). 0: Auto WB (BROKEN). 1: Camera WB (If retrievable). 2: No WB Processing.
+	-W[0:3]   WHITE - This is a modal white balance setting. Defaults to 0. 1 doesn't always work very well.
+	  --> Use -W<mode> (no space).
+	  --> 0: Auto WB (Requires Python Deps). 1: Camera WB (If retrievable). 2: No WB Change. 3: Custom WB (
 
-	-l   LUT - This is a path to the 3D LUT. Specify the path to the LUT to use it.
+	-l<path>   LUT - This is a path to the 3D LUT. Specify the path to the LUT to use it.
 	  --> Compatibility determined by ffmpeg (.cube is supported).
 	  --> Path to LUT (no space between -l and path). Without specifying -l, no LUT will be applied.
 
-	-n   NOISE_REDUC - This is the threshold of wavelet denoising - specify to use.
+	-n[int]   NOISE_REDUC - This is the threshold of wavelet denoising - specify to use.
 	  --> Use -n<number>. Defaults to no denoising. 150 tends to be a good setting; 350 starts to look strange.
 
 	-b   BADPIXELS - Fix focus pixels issue using dfort's script.
 	  --> His file can be found at https://bitbucket.org/daniel_fort/ml-focus-pixels/src.
-```
+</pre>

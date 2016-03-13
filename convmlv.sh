@@ -1,10 +1,16 @@
 #!/bin/bash
 
 #BASIC CONSTANTS
-MLV_DUMP="./mlv_dump" #Path to MLV_DUMP location.
+MLV_DUMP="./mlv_dump" #Path to mlv_dump location.
+RAW_DUMP="./raw2dng" #Path to raw2dng location.
 MLV_BP="./mlv2badpixels.sh"
-DEPS="imagemagick dcraw ffmpeg" #Dependency package names (Debian). List with -K option.
-VERSION="1.3.0" #Version string.
+PYTHON="python3"
+
+BAL=""
+
+DEPS="imagemagick dcraw ffmpeg python3 pip3" #Dependency package names (Debian). List with -K option.
+PIP_DEPS="numpy Pillow tifffile" #Technically, you don't need Pillow. I'm not really sure :).
+VERSION="1.4.0" #Version string.
 
 #MODDABLE CONSTANTS
 OUTDIR="$(pwd)"
@@ -23,29 +29,40 @@ isLUT=false
 NOISE_REDUC=""
 BADPIXELS=""
 isBP=false
+GEN_WHITE=false
+isMLV=true
 
 
 help () {
 	echo -e "Usage:\n	\033[1m./convmlv.sh\033[0m [OPTIONS] \033[2mmlv_files\033[0m\n"
 			
-	echo -e "INFO:\n	A script allowing you to convert .MLV files into TIFF + JPG (proxy) sequences and/or a Prores 4444 .mov,
+	echo -e "INFO:\n	A script allowing you to convert .MLV or .RAW files into TIFF + JPG (proxy) sequences and/or a Prores 4444 .mov,
 	with an optional H.264 .mp4 preview. Many useful options are exposed.\n"
 
-	echo -e "DEPENDENCIES:\n	-mlv_dump: For MLV --> DNG.\n	-dcraw: For DNG --> TIFF.\n	-ffmpeg: For .mov/mp4 creation.\n	-mlv2badpixels.sh: For badpixels removal.\n	-convert: Part of ImageMagick.\n"
+	echo -e "DEPENDENCIES: *If you don't use a feature, you don't need the dependency!"
+	echo -e "	-mlv_dump: For DNG extraction from MLV. http://www.magiclantern.fm/forum/index.php?topic=7122.0"
+	echo -e "	-raw2dng: For DNG extraction from RAW. http://www.magiclantern.fm/forum/index.php?topic=5404.0"
+	echo -e "	-mlv2badpixels.sh: For bad pixel removal. https://bitbucket.org/daniel_fort/ml-focus-pixels/src"
+	echo -e "	-dcraw: For RAW development."
+	echo -e "	-ffmpeg: For video creation."
+	echo -e "	-ImageMagick: Used for making proxy sequence."
+	echo -e "	-Python 3 + libs: Used for auto white balance.\n"
 	
 	echo -e "VERSION: ${VERSION}\n"
 
 
 	echo -e "OPTIONS:"
-	echo -e "	-V   Version - Print out version string."
-	echo -e "	-o   OUTDIR - The path in which files will be placed (no space btwn -o and path).\n"
-	echo -e "	-M   MLV_DUMP - The path to mlv_dump (no space btwn -M and path). Default is './mlv_dump'.\n"
+	echo -e "	-V   version - Print out version string."
+	echo -e "	-o   OUTDIR - The path in which files will be placed (no space btwn -o and path)."
+	echo -e "	-M   MLV_DUMP - The path to mlv_dump (no space btwn -M and path). Default is './mlv_dump'."
+	echo -e "	-R   RAW_DUMP - The path to raw2dng (no space btwn -M and path). Default is './raw2dng'."
+	echo -e "	-y   PYTHON - The path or command used to invoke Python. Defaults to python3."
 	echo -e "	-B   MLV_BP - The path to mlv2badpixels.sh (by dfort). Default is './mlv2badpixels.sh'.\n"
-	
-	echo -e "	-H[0-9]   HIGHLIGHT_MODE - 3 to 9 does degrees of highlight reconstruction, 1 and 2 don't. 0 is default."
+		
+	echo -e "	-H   HIGHLIGHT_MODE - 3 to 9 does degrees of colored highlight reconstruction, 1 and 2 allow clipping. 0 is default."
 	echo -e "	  --> Use -H<number> (no space).\n"
 	
-	echo -e "	-s[00-99]%   PROXY_SCALE - the size, in %, of the proxy output."
+	echo -e "	-s   PROXY_SCALE - the size, in %, of the proxy output."
 	echo -e "	  --> Use -s<double-digit number>% (no space). 50% is default.\n"
 	
 	echo -e "	-m   HQ_MOV - Use to create a Prores 4444 file.\n"
@@ -58,8 +75,13 @@ help () {
 	echo -e "	-d   DEMO_MODE - DCraw demosaicing mode. Higher modes are slower. 1 is default."
 	echo -e "	  --> Use -d<mode> (no space). 0: Bilinear. 1: VNG (default). 2: PPG. 3: AHD.\n"
 	
-	echo -e "	-K   Package Deps - Lists dependecies. Works with apt-get."
-	echo -e "	  --> No operations will be done. Also, you must provide mlv_dump.\n"
+	echo -e "	-K   Debian Package Deps - Lists dependecies. Works with apt-get on Debian; should be similar elsewhere."
+	echo -e "	  --> No operations will be done.\n"
+	echo -e "	  --> Example: sudo apt-get install $ (./convmlv -K)\n"
+	
+	echo -e "	-Y   Python Deps - Lists Python dependencies. Works with pip."
+	echo -e "	  --> No operations will be done. "
+	echo -e "	  --> Example: sudo pip3 install $ (./convmlv -Y)\n"
 	
 	echo -e "	-g   GAMMA - This is a modal gamma curve that is applied to the image. 0 is default."
 	echo -e "	  --> Use -g<mode> (no space). 0: Linear. 1: 2.2 (Adobe RGB). 2: 1.8 (ProPhoto RGB). 3: sRGB. 4: BT.709.\n"
@@ -68,7 +90,8 @@ help () {
 	echo -e "	  --> It'll kind of ruin the point of RAW, though....\n"
 	
 	echo -e "	-W   WHITE - This is a modal white balance setting. Defaults to 2; 1 doesn't always work very well."
-	echo -e "	  --> Use -W<mode> (no space). 0: Auto WB (BROKEN). 1: Camera WB (If retrievable). 2: No WB Processing.\n"
+	echo -e "	  --> Use -W<mode> (no space)."
+	echo -e "	  --> 0: Auto WB (Requires Python Deps). 1: Camera WB (If retrievable). 2: No WB Change. 3: Custom WB (\n"
 	
 	echo -e "	-l   LUT - This is a path to the 3D LUT. Specify the path to the LUT to use it."
 	echo -e "	  --> Compatibility determined by ffmpeg (.cube is supported)."
@@ -103,18 +126,7 @@ mkdirS() {
 	
 }
 
-
-if [ $# == 0 ]; then
-	echo -e "\e[0;31m\e[1mNo arguments, no joy!!!\e[0m\n"
-	help
-fi
-
-ARGNUM=$#
-
-trap "rm -rf ${TMP} ${NEW} ${PROXY}; exit 1" INT
-for ARG in $*; do
-	#Evaluate command line arguments. ARGNUM decrements to keep track of how many files there are to process.
-	
+parseArgs() {
 	if [ `echo ${ARG} | cut -c1-1` = "-" ]; then
 		if [ `echo ${ARG} | cut -c2-2` = "H" ]; then
 			HIGHLIGHT_MODE=`echo ${ARG} | cut -c3-3`
@@ -127,6 +139,14 @@ for ARG in $*; do
 				PROXY_SCALE=`echo ${ARG} | cut -c3-5`
 			fi
 			let ARGNUM--
+		fi
+		if [ `echo ${ARG} | cut -c2-2` = "y" ]; then
+			PYTHON=`echo ${ARG} | cut -c3-${#ARG}`
+			BAL="${PYTHON} balance.py"
+			
+			let ARGNUM--
+		else
+			BAL="${PYTHON} balance.py"
 		fi
 		if [ `echo ${ARG} | cut -c2-2` = "v" ]; then
 			echo -e "convmlv: v${VERSION}"
@@ -189,7 +209,7 @@ for ARG in $*; do
 		if [ `echo ${ARG} | cut -c2-2` = "W" ]; then
 			mode=`echo ${ARG} | cut -c3-3`
 			case ${mode} in
-				"0") WHITE="-a"
+				"0") GEN_WHITE=true #Will generate white balance.
 				;;
 				"1") WHITE="-w"
 				;;
@@ -226,6 +246,10 @@ for ARG in $*; do
 			fi
 			let ARGNUM--
 		fi
+		if [ `echo ${ARG} | cut -c2-2` = "Y" ]; then
+			echo $PIP_DEPS
+			exit 0
+		fi
 		continue
 	fi
 	
@@ -234,13 +258,35 @@ for ARG in $*; do
 		echo -e "\e[0;31m\e[1mFile ${ARG} not found!\e[0m\n"
 		exit 1
 	fi
+}
+
+if [ $# == 0 ]; then
+	echo -e "\e[0;31m\e[1mNo arguments, no joy!!!\e[0m\n"
+	help
+fi
+
+ARGNUM=$#
+
+trap "rm -rf ${TMP} ${NEW} ${PROXY}; exit 1" INT
+for ARG in $*; do
+	#Evaluate command line arguments. ARGNUM decrements to keep track of how many files there are to process.
+	parseArgs
 	
-	echo -e "\n\e[1mFiles Left to Process: \e[0m${ARGNUM}"
+	#Check that file exists.
+	if [ ! -f $ARG ]; then
+		echo -e "\e[0;31m\e[1mFile ${ARG} not found!\e[0m\n"
+		exit 1
+	fi
+	
+	echo -e "\n\e[1mFiles Left to Process: \e[0m${ARGNUM}\n"
 	
 	#Create directory structure.
 	mkdirS $OUTDIR
-	
-	TRUNC_ARG=`echo ${ARG} | cut -f 1 -d "."`
+		
+	BASE=$(basename "$ARG")
+	EXT="${BASE##*.}"
+	TRUNC_ARG="${BASE%.*}"
+		
 	FILE="${OUTDIR}/${TRUNC_ARG}"
 	
 	TMP="${FILE}/tmp_${TRUNC_ARG}"
@@ -251,9 +297,8 @@ for ARG in $*; do
 	mkdirS $TIFF
 	mkdirS $PROXY
 	
-	#Create badpixels file.
-	echo -e 
-	if [ $isBP ]; then
+	#Optionally create badpixels file.
+	if [ $isBP == true ]; then
 		echo -e "\e[1m${TRUNC_ARG}:\e[0m Generating badpixels file..."
 		
 		bad_name="badpixels_${TRUNC_ARG}.txt"
@@ -262,22 +307,53 @@ for ARG in $*; do
 		BADPIXELS="-P ${TMP}/${bad_name}"
 	fi
 	
-	#Dump to DNG sequence using mlv_dump
+	#Dump to DNG sequence
 	echo -e "\n\e[1m${TRUNC_ARG}:\e[0m Dumping to DNG Sequence..."
 	
 	if [ ! -f $MLV_DUMP ]; then
 		echo -e "\e[0;31m\e[1mmlv_dump not found at path ${MLV_DUMP}!!!\e[0m\n"
 		exit 1
 	fi
-
-	$MLV_DUMP $ARG -o "${TMP}/${TRUNC_ARG}_" --dng --no-cs >/dev/null 2>/dev/null
+	
+	
+	
+	if [ $EXT == "MLV" ] || [ $EXT == "mlv" ]; then
+		$MLV_DUMP $ARG -o "${TMP}/${TRUNC_ARG}_" --dng --no-cs >/dev/null 2>/dev/null
+	elif [ $EXT == "RAW" ] || [ $EXT == "raw" ]; then
+		$RAW_DUMP $ARG "${TMP}/${TRUNC_ARG}_"
+	fi
 	
 	FRAMES=`expr $(ls -1U ${TMP} | wc -l) - 1`
+	
+	#Do fastest possible dcraw conversion to get auto white balance (Ideally, read directly from MLV)
+	echo -e "\n\e[1m${TRUNC_ARG}:\e[0m Generating Auto WB...\n"
+	if [ $GEN_WHITE == true ]; then
+		i=1
+		for file in $TMP/*.dng; do #But why??? Only from a tiff sequence can we read white balance.
+			dcraw -q 0 $BADPIXELS -r 1 1 1 1 -g $GAMMA -o 0 -T "${file}"
+			echo -e "\e[2K\rWB Development: Frame ${i}/${FRAMES}.\c"
+			let i++
+		done
+		
+		toBal="${TMP}/toBal"
+		mkdirS $toBal
+		
+		for tiff in $TMP/*.tiff; do
+			mv $tiff $toBal #TIFF MOVEMENT
+		done
+		
+		#Read result into a form dcraw likes.
+		BALANCE=`$BAL $toBal`
+		echo -e "\n\nCalculating White Balance..."
+		WHITE="-r ${BALANCE} 1.000000"
+		echo -e "Correction Factor (RGB): $BALANCE"
+	fi
 
 	echo -e "\n\e[1m${TRUNC_ARG}:\e[0m Converting ${FRAMES} DNGs to TIFF...\n"
-
+	
+	#Convert all the actual DNGs to TIFFs, in more correct ways.
 	trap "rm -rf ${TMP} ${TIFF} ${PROXY}; exit 1" INT
-	i=0
+	i=1
 	for file in $TMP/*.dng; do
 		dcraw -q $DEMO_MODE $BADPIXELS $WHITE -H $HIGHLIGHT_MODE -g $GAMMA $NOISE_REDUC -o 0 $DEPTH -T "${file}"
 		echo -e "\e[2K\rDNG Development (dcraw): Frame ${i}/${FRAMES}.\c"
@@ -285,10 +361,10 @@ for ARG in $*; do
 	done
 	
 	#Potentially apply a LUT.
-	if [ $isLUT = true ]; then
+	if [ $isLUT == true ]; then
 		echo -e "\n\n\e[1m${TRUNC_ARG}:\e[0m Applying LUT to ${FRAMES} TIFFs...\n"
 		trap "rm -rf ${TMP} ${TIFF} ${PROXY}; exit 1" INT
-		i=0
+		i=1
 		for tiff in $TMP/*.tiff; do
 			output=$(printf "${TMP}/LUT_${TRUNC_ARG}_%06d" ${i})
 			ffmpeg -i $tiff -loglevel panic -vf lut3d="${LUT}" "${output}.tiff"
@@ -302,7 +378,7 @@ for ARG in $*; do
 	
 	#Move tiffs into place and generate proxies.
 	trap "rm -rf ${TMP} ${TIFF} ${PROXY}; exit" INT
-	i=0
+	i=1
 	for tiff in $TMP/*.tiff; do
 		output=$(printf "${PROXY}/${TRUNC_ARG}_%06d" ${i})
 		convert -quiet $tiff -resize $PROXY_SCALE "${output}.jpg"  > /dev/null #PROXY GENERATION
@@ -328,7 +404,7 @@ for ARG in $*; do
 	VID="${FILE}/${TRUNC_ARG}"
 	
 	# --> Potentially create High Quality Prores 4444: 
-	if [ $HQ_MOV ]; then
+	if [ $HQ_MOV == true ]; then
 		echo -e "\n\e[1mHigh Quality (Prores 4444) Video: \e[0m"
 		if [ ! -f "${TMP}/${TRUNC_ARG}_.wav" ]; then
 			ffmpeg -f image2 -i "${TIFF}/${TRUNC_ARG}_%06d.tiff" -loglevel panic -stats -vcodec prores_ks -profile:v 4444 -alpha_bits 0 -vendor ap4h "${VID}_hq.mov"
@@ -339,14 +415,15 @@ for ARG in $*; do
 	fi
 	
 	# --> Potentially create proxy H.264: Highly unsuited for any color work; just a preview.
-	if [ $LQ_PROXY ]; then
+	if [ $LQ_PROXY == true ]; then
 		echo -e "\n\e[1mLow Quality (H.264) Video: \e[0m"
 		if [ ! -f "${TMP}/${TRUNC_ARG}_.wav" ]; then
-			ffmpeg -f image2 -i "${PROXY}/${TRUNC_ARG}_%06d.jpg" -loglevel panic -stats -c:v libx264 -preset fast -crf 23 "${VID}_lq.mp4"
+			ffmpeg -f image2 -i "${PROXY}/${TRUNC_ARG}_%06d.jpg" -loglevel panic -stats -c:v libx264 -preset fast -vf "scale=trunc(iw/2)*2:trunc(ih/2)*2" -crf 23 "${VID}_lq.mp4"
 		else
-			ffmpeg -f image2 -i "${PROXY}/${TRUNC_ARG}_%06d.jpg" -i "${OUTDIR}/${TRUNC_ARG}_.wav" -loglevel panic -stats -c:v libx264 -preset fast -crf 23 -c:a mp3 "${VID}_lq.mp4"
+			ffmpeg -f image2 -i "${PROXY}/${TRUNC_ARG}_%06d.jpg" -i "${OUTDIR}/${TRUNC_ARG}_.wav" -loglevel panic -stats -c:v libx264 -preset fast -vf "scale=trunc(iw/2)*2:trunc(ih/2)*2" -crf 23 -c:a mp3 "${VID}_lq.mp4"
 		fi
 	fi
+	#-vf "scale=trunc(iw/2)*2:trunc(ih/2)*2" fixes when x264 is unhappy about non-2 divisible dimensions.
 	
 	echo -e "\n\e[1mDeleting files.\e[0m\n"
 

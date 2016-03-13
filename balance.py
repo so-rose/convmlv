@@ -64,8 +64,7 @@ if __name__ == '__main__' :
 	elif os.path.isfile(sys.argv[1]) :
 		for fil in sys.argv[1:] :
 			print(grey(imgOpen(fil)))
-		
-		cond = lambda x: true
+			
 	'''
 	eIn = False
 	#~ print(bal)

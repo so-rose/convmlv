@@ -23,7 +23,7 @@ LQ_PROXY=false
 DELETE_IMGS=false
 GAMMA="1 1"
 DEPTH="-4"
-WHITE="-r 1 1 1 1"
+WHITE=""
 LUT=""
 isLUT=false
 NOISE_REDUC=""
@@ -52,17 +52,17 @@ help () {
 
 
 	echo -e "OPTIONS:"
-	echo -e "	-V   version - Print out version string."
-	echo -e "	-o   OUTDIR - The path in which files will be placed (no space btwn -o and path)."
-	echo -e "	-M   MLV_DUMP - The path to mlv_dump (no space btwn -M and path). Default is './mlv_dump'."
-	echo -e "	-R   RAW_DUMP - The path to raw2dng (no space btwn -M and path). Default is './raw2dng'."
-	echo -e "	-y   PYTHON - The path or command used to invoke Python. Defaults to python3."
-	echo -e "	-B   MLV_BP - The path to mlv2badpixels.sh (by dfort). Default is './mlv2badpixels.sh'.\n"
+	echo -e "	-v   version - Print out version string."
+	echo -e "	-o<path>   OUTDIR - The path in which files will be placed (no space btwn -o and path)."
+	echo -e "	-M<path>   MLV_DUMP - The path to mlv_dump (no space btwn -M and path). Default is './mlv_dump'."
+	echo -e "	-R<path>   RAW_DUMP - The path to raw2dng (no space btwn -M and path). Default is './raw2dng'."
+	echo -e "	-y<path>   PYTHON - The path or command used to invoke Python. Defaults to python3."
+	echo -e "	-B<path>   MLV_BP - The path to mlv2badpixels.sh (by dfort). Default is './mlv2badpixels.sh'.\n"
 		
-	echo -e "	-H   HIGHLIGHT_MODE - 3 to 9 does degrees of colored highlight reconstruction, 1 and 2 allow clipping. 0 is default."
+	echo -e "	-H[0:9]   HIGHLIGHT_MODE - 3 to 9 does degrees of colored highlight reconstruction, 1 and 2 allow clipping. 0 is default."
 	echo -e "	  --> Use -H<number> (no space).\n"
 	
-	echo -e "	-s   PROXY_SCALE - the size, in %, of the proxy output."
+	echo -e "	-s[0%:100%]   PROXY_SCALE - the size, in %, of the proxy output."
 	echo -e "	  --> Use -s<double-digit number>% (no space). 50% is default.\n"
 	
 	echo -e "	-m   HQ_MOV - Use to create a Prores 4444 file.\n"
@@ -72,7 +72,7 @@ help () {
 	echo -e "	-D   DELETE_IMGS - Use to delete not only TMP, but also the TIF and proxy sequences."
 	echo -e "	  --> Useful if all you want are video files.\n"
 	
-	echo -e "	-d   DEMO_MODE - DCraw demosaicing mode. Higher modes are slower. 1 is default."
+	echo -e "	-d[0:3]   DEMO_MODE - DCraw demosaicing mode. Higher modes are slower. 1 is default."
 	echo -e "	  --> Use -d<mode> (no space). 0: Bilinear. 1: VNG (default). 2: PPG. 3: AHD.\n"
 	
 	echo -e "	-K   Debian Package Deps - Lists dependecies. Works with apt-get on Debian; should be similar elsewhere."
@@ -83,21 +83,21 @@ help () {
 	echo -e "	  --> No operations will be done. "
 	echo -e "	  --> Example: sudo pip3 install $ (./convmlv -Y)\n"
 	
-	echo -e "	-g   GAMMA - This is a modal gamma curve that is applied to the image. 0 is default."
+	echo -e "	-g[0:4]   GAMMA - This is a modal gamma curve that is applied to the image. 0 is default."
 	echo -e "	  --> Use -g<mode> (no space). 0: Linear. 1: 2.2 (Adobe RGB). 2: 1.8 (ProPhoto RGB). 3: sRGB. 4: BT.709.\n"
 	
 	echo -e "	-P   DEPTH - Specifying this option will create an 8-bit output instead of a 16-bit output."
 	echo -e "	  --> It'll kind of ruin the point of RAW, though....\n"
 	
-	echo -e "	-W   WHITE - This is a modal white balance setting. Defaults to 2; 1 doesn't always work very well."
+	echo -e "	-W[0:3]   WHITE - This is a modal white balance setting. Defaults to 0. 1 doesn't always work very well."
 	echo -e "	  --> Use -W<mode> (no space)."
 	echo -e "	  --> 0: Auto WB (Requires Python Deps). 1: Camera WB (If retrievable). 2: No WB Change. 3: Custom WB (\n"
 	
-	echo -e "	-l   LUT - This is a path to the 3D LUT. Specify the path to the LUT to use it."
+	echo -e "	-l<path>   LUT - This is a path to the 3D LUT. Specify the path to the LUT to use it."
 	echo -e "	  --> Compatibility determined by ffmpeg (.cube is supported)."
 	echo -e "	  --> Path to LUT (no space between -l and path). Without specifying -l, no LUT will be applied.\n"
 	
-	echo -e "	-n   NOISE_REDUC - This is the threshold of wavelet denoising - specify to use."
+	echo -e "	-n[int]   NOISE_REDUC - This is the threshold of wavelet denoising - specify to use."
 	echo -e "	  --> Use -n<number>. Defaults to no denoising. 150 tends to be a good setting; 350 starts to look strange.\n"
 	
 	echo -e "	-b   BADPIXELS - Fix focus pixels issue using dfort's script."
@@ -160,6 +160,10 @@ parseArgs() {
 			MLV_DUMP=`echo ${ARG} | cut -c3-${#ARG}`
 			let ARGNUM--
 		fi
+		if [ `echo ${ARG} | cut -c2-2` = "R" ]; then
+			RAW_DUMP=`echo ${ARG} | cut -c3-${#ARG}`
+			let ARGNUM--
+		fi
 		if [ `echo ${ARG} | cut -c2-2` = "p" ]; then
 			LQ_PROXY=true
 			let ARGNUM--
@@ -218,6 +222,8 @@ parseArgs() {
 			esac
 		
 			let ARGNUM--
+		else
+			GEN_WHITE=true
 		fi
 		if [ `echo ${ARG} | cut -c2-2` = "K" ]; then
 			echo $DEPS
@@ -314,8 +320,6 @@ for ARG in $*; do
 		echo -e "\e[0;31m\e[1mmlv_dump not found at path ${MLV_DUMP}!!!\e[0m\n"
 		exit 1
 	fi
-	
-	
 	
 	if [ $EXT == "MLV" ] || [ $EXT == "mlv" ]; then
 		$MLV_DUMP $ARG -o "${TMP}/${TRUNC_ARG}_" --dng --no-cs >/dev/null 2>/dev/null

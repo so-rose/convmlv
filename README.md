@@ -6,7 +6,7 @@ See [http://www.magiclantern.fm/forum/index.php?action=post;topic=16799.0;last_m
 
 Help page is below:
 
-<br>
+```<br>
 
 Usage:
 	./convmlv.sh [OPTIONS] mlv_files
@@ -69,3 +69,4 @@ OPTIONS:
 
 	-b   BADPIXELS - Fix focus pixels issue using dfort's script.
 	  --> His file can be found at https://bitbucket.org/daniel_fort/ml-focus-pixels/src.
+```

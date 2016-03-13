@@ -2,7 +2,7 @@
 
 MLV to TIFF/ProRes and Proxy ProRes/H.264
 =======
-See [http://www.magiclantern.fm/forum/index.php?topic=16799.0](Link URL) for more info.
+See [http://www.magiclantern.fm/forum/index.php?topic=16799.0](http://www.magiclantern.fm/forum/index.php?topic=16799.0) for more info.
 
 Help page is below:
 

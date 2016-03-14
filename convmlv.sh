@@ -44,7 +44,7 @@ LUT=""
 isLUT=false
 
 
-help () {
+help () { #This is a little too much @ this point...
 	echo -e "Usage:\n	\033[1m./convmlv.sh\033[0m [OPTIONS] \033[2mmlv_files\033[0m\n"
 			
 	echo -e "INFO:\n	A script allowing you to convert .MLV or .RAW files into TIFF + JPG (proxy) sequences and/or a Prores 4444 .mov,
@@ -76,7 +76,7 @@ help () {
 	
 	echo -e "	-m   MOVIE - Specify to create a Prores4444 video.\n" ###
 	
-	echo -e "	-f   FPS - Specify the FPS to create the movie at. Defaults to 24."
+	echo -e "	-f   FPS - Specify the FPS to create the movie at. Defaults to 24.\n"
 	
 	echo -e "	-p[0:3]   PROXY - Specifies the proxy mode." ###
 	echo -e "	  --> 0: No proxies. 1: H.264 proxy. 2: JPG proxy sequence. 3: Both.\n"
@@ -112,7 +112,7 @@ help () {
 	echo -e "	  --> 0: Auto WB (Requires Python Deps). 1: Camera WB. 2: No Change.\n"
 	
 	echo -e "	-A[int]   WHITE_SPD - This is the speed of the auto white balance, causing quality loss. Defaults to 15."
-	echo -e "	  --> For AWB, the script averages the entire sequence, skipping n frames each time. This value is n."
+	echo -e "	  --> For AWB, the script averages the entire sequence, skipping n frames each time. This value is n.\n"
 	
 	echo -e "	-l<path>   LUT - This is a path to the 3D LUT. Specify the path to the LUT to use it."
 	echo -e "	  --> Compatibility determined by ffmpeg (.cube is supported)."
@@ -149,7 +149,7 @@ mkdirS() {
 	
 }
 
-parseArgs() {
+parseArgs() { #Holy garbage
 	if [ `echo ${ARG} | cut -c1-1` = "-" ]; then
 		if [ `echo ${ARG} | cut -c2-2` = "H" ]; then
 			HIGHLIGHT_MODE=`echo ${ARG} | cut -c3-3`
@@ -474,7 +474,7 @@ for ARG in $*; do
 			done
 		fi
 		
-		echo -e "\n\n\e[1m${TRUNC_ARG}:\e[0m Processing ${FRAMES} TIFFs & Generating Proxies...\n"
+		echo -e "\n\n\e[1m${TRUNC_ARG}:\e[0m Processing ${FRAMES} TIFFs...\n"
 		
 		jpgProxy() {
 			i=1
@@ -526,7 +526,7 @@ fi
 			find "${TMP}" -maxdepth 1 -iname '*.dng' -print0 | sort -z | xargs -0 \
 				dcraw -c -q 0 $BADPIXELS $WHITE -H $HIGHLIGHT_MODE -g $GAMMA $NOISE_REDUC -o 0 | \
 				ffmpeg -f image2pipe -vcodec ppm -r $FPS -i pipe:0 \
-					-loglevel panic -stats $SOUND -c:v libx264 -n -r $FPS -preset fast -vf "scale=trunc(iw/2)*2:trunc(ih/2)*2" -crf 23 $LUT -c:a mp3 "${VID}_lq.mp4"
+					-loglevel panic -stats $SOUND -c:v libx264 -n -r $FPS -preset fast -vf "scale=trunc(iw/2)*${SCALE}:trunc(ih/2)*${SCALE}" -crf 23 $LUT -c:a mp3 "${VID}_lq.mp4"
 			#The option -vf "scale=trunc(iw/2)*2:trunc(ih/2)*2" fixes when x264 is unhappy about non-2 divisible dimensions.
 		}
 		
@@ -537,7 +537,6 @@ fi
 		#Here we go!
 		if [ $isH264 == true ]; then
 			echo -e "\n\n\e[1m${TRUNC_ARG}:\e[0m Encoding to ProRes and Proxy..."
-			#~ vidHQ
 			cat $PIPE | vidLQ & echo "text" | tee $PIPE | vidHQ #The magic of simultaneous execution ^_^
 		else
 			echo -e "\n\n\e[1m${TRUNC_ARG}:\e[0m Encoding to ProRes..."
@@ -545,7 +544,7 @@ fi
 		fi
 	fi
 	
-	echo -e "\n\e[1mDeleting files.\e[0m\n"
+	echo -e "\n\e[1mCleaning Up.\e[0m\n"
 	
 #Potentially move DNGs.
 	if [ $KEEP_DNGS == true ]; then

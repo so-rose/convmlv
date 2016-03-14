@@ -135,7 +135,7 @@ mkdirS() {
 		while true; do
 			read -p "Overwrite ${path}? [y/n] " yn
 			case $yn in
-				[Yy]* ) rm -rf $path; mkdir -p $path >/dev/null 2>/dev/null
+				[Yy]* ) rm -rf $path; mkdir -p $path >/dev/null 2>/dev/null; break
 				;;
 				[Nn]* ) echo -e "\n\e[0;31m\e[1mDirectory ${path} won't be created.\e[0m\n"; exit 0
 				;;
@@ -348,7 +348,9 @@ for ARG in $*; do
 #PREPARATION
 
 #Basic Directory Structure.
-	mkdirS $OUTDIR
+	if [ $OUTDIR != $PWD ]; then
+		mkdirS $OUTDIR
+	fi
 		
 	BASE=$(basename "$ARG")
 	EXT="${BASE##*.}"
@@ -506,10 +508,10 @@ fi
 		SCALE=`echo "($(echo "${PROXY_SCALE}" | sed 's/%//') / 100) * 2" | bc -l` #Get scale as factor, *2 for 50%
 		
 		SOUND="-i ${TMP}/${TRUNC_ARG}_.wav"
-		SOUND_ACTION=
+		SOUND_ACTION="-c:a copy"
 		if [ ! -f $SOUND_PATH ]; then
 			SOUND=""
-			SOUND_ACTION="-c:a copy"
+			SOUND_ACTION=""
 		fi
 		
 		#LUT is automatically applied if argument was passed.
@@ -517,14 +519,14 @@ fi
 			find "${TMP}" -maxdepth 1 -iname '*.dng' -print0 | sort -z | xargs -0 \
 				dcraw -c -q $DEMO_MODE $BADPIXELS $WHITE -H $HIGHLIGHT_MODE -g $GAMMA $NOISE_REDUC -o 0 $DEPTH | \
 				ffmpeg -f image2pipe -vcodec ppm -r $FPS -i pipe:0 \
-					  $SOUND -vcodec prores_ks -n -r $FPS -profile:v 4444 -alpha_bits 0 -vendor ap4h $LUT "${VID}_hq.mov"
+					-loglevel panic -stats $SOUND -vcodec prores_ks -n -r $FPS -profile:v 4444 -alpha_bits 0 -vendor ap4h $LUT $SOUND_ACTION "${VID}_hq.mov"
 		} #-loglevel panic -stats
 
 		vidLQ() {
 			find "${TMP}" -maxdepth 1 -iname '*.dng' -print0 | sort -z | xargs -0 \
 				dcraw -c -q 0 $BADPIXELS $WHITE -H $HIGHLIGHT_MODE -g $GAMMA $NOISE_REDUC -o 0 | \
 				ffmpeg -f image2pipe -vcodec ppm -r $FPS -i pipe:0 \
-					$SOUND -c:v libx264 -n -r $FPS -preset fast -vf "scale=trunc(iw/2)*2:trunc(ih/2)*2" -crf 23 $LUT -c:a mp3 "${VID}_lq.mp4"
+					-loglevel panic -stats $SOUND -c:v libx264 -n -r $FPS -preset fast -vf "scale=trunc(iw/2)*2:trunc(ih/2)*2" -crf 23 $LUT -c:a mp3 "${VID}_lq.mp4"
 			#The option -vf "scale=trunc(iw/2)*2:trunc(ih/2)*2" fixes when x264 is unhappy about non-2 divisible dimensions.
 		}
 		
@@ -535,7 +537,7 @@ fi
 		#Here we go!
 		if [ $isH264 == true ]; then
 			echo -e "\n\n\e[1m${TRUNC_ARG}:\e[0m Encoding to ProRes and Proxy..."
-			vidHQ
+			#~ vidHQ
 			cat $PIPE | vidLQ & echo "text" | tee $PIPE | vidHQ #The magic of simultaneous execution ^_^
 		else
 			echo -e "\n\n\e[1m${TRUNC_ARG}:\e[0m Encoding to ProRes..."

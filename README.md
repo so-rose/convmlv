@@ -25,7 +25,7 @@ DEPENDENCIES: *If you don't use a feature, you don't need the dependency!
 	-Python 3 + libs: Used for auto white balance.
 	-exiftool + xxd: Used in mlv2badpixels.sh.
 
-VERSION: 1.5.0
+VERSION: 1.5.2
 
 OPTIONS, BASIC:
 	-v   version - Print out version string.
@@ -41,8 +41,6 @@ OPTIONS, OUTPUT:
 
 	-m   MOVIE - Specify to create a Prores4444 video.
 
-	-f   FPS - Specify the FPS to create the movie at. Defaults to 24.
-
 	-p[0:3]   PROXY - Specifies the proxy mode.
 	  --> 0: No proxies. 1: H.264 proxy. 2: JPG proxy sequence. 3: Both.
 
@@ -57,11 +55,18 @@ OPTIONS, RAW DEVELOPMENT:
 	-d[0:3]   DEMO_MODE - DCraw demosaicing mode. Higher modes are slower. 1 is default.
 	  --> Use -d<mode> (no space). 0: Bilinear. 1: VNG (default). 2: PPG. 3: AHD.
 
-	-H[0:9]   HIGHLIGHT_MODE - 3 to 9 does degrees of colored highlight reconstruction, 1 and 2 allow clipping.
-	  --> Use -H<number> (no space). 0 is default.
+	-f   FOUR_COLOR - Interpolate RGB as four colors. Can often fix weirdness with demosaicing.
+
+	-H[0:9]   HIGHLIGHT_MODE - 2 looks the best, without major modifications. 0 is also a safe bet.
+	  --> Use -H<number> (no space). 0 clips. 1 allows colored highlights. 2 adjusts highlights to grey.
+	  --> 3 through 9 do highlight reconstruction with a certain tone. See dcraw documentation.
 
 	-b   BADPIXELS - Fix focus pixels issue using dfort's script.
 	  --> His file can be found at https://bitbucket.org/daniel_fort/ml-focus-pixels/src.
+
+	-a<path>   BADPIXEL_PATH - Use, appending to the generated one, your own .badpixels file. REQUIRES -b.
+	  --> Use -a<path> (no space). How to: http://www.dl-c.com/board/viewtopic.php?f=4&t=686
+
 	-n[int]   NOISE_REDUC - This is the threshold of wavelet denoising - specify to use.
 	  --> Use -n<number>. Defaults to no denoising. 150 tends to be a good setting; 350 starts to look strange.
 
@@ -93,5 +98,6 @@ OPTIONS, DEPENDENCIES:
 	-Y   Python Deps - Lists Python dependencies. Works with pip.
 	  --> No operations will be done. 
 	  --> Example: sudo pip3 install $ (./convmlv -Y)
+
 
 ```

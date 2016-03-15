@@ -3,7 +3,7 @@
 #BASIC CONSTANTS
 DEPS="imagemagick dcraw ffmpeg python3 pip3 exiftool xxd" #Dependency package names (Debian). List with -K option.
 PIP_DEPS="numpy Pillow tifffile" #Technically, you don't need Pillow. I'm not really sure :).
-VERSION="1.5.0" #Version string.
+VERSION="1.5.2" #Version string.
 PYTHON="python3"
 
 #NON-STANDARD FILE LOCATIONS
@@ -15,22 +15,25 @@ PYTHON_BAL="./balance.py"
 BAL="${PYTHON} ${PYTHON_BAL}"
 
 #MODDABLE CONSTANTS
-OUTDIR="$(pwd)"
+OUTDIR="$(pwd)/raw_conv"
+isOutGen=false
 MOVIE=false
-FPS=24
+FPS=24 #Will be read from .MLV.
 IMAGES=false
 isJPG=true
 isH264=true
 KEEP_DNGS=false
+FOUR_COLOR=""
 
 #DCraw
 HIGHLIGHT_MODE="0"
-PROXY_SCALE="50%"
+PROXY_SCALE="75%"
 DEMO_MODE="1"
 GAMMA="1 1"
 DEPTH="-4"
 NOISE_REDUC=""
 BADPIXELS=""
+BADPIXEL_PATH=""
 isBP=false
 
 #White Balance
@@ -75,9 +78,7 @@ help () { #This is a little too much @ this point...
 	echo -e "	-i   IMAGE - Specify to create a TIFF sequence.\n" ###
 	
 	echo -e "	-m   MOVIE - Specify to create a Prores4444 video.\n" ###
-	
-	echo -e "	-f   FPS - Specify the FPS to create the movie at. Defaults to 24.\n"
-	
+		
 	echo -e "	-p[0:3]   PROXY - Specifies the proxy mode." ###
 	echo -e "	  --> 0: No proxies. 1: H.264 proxy. 2: JPG proxy sequence. 3: Both.\n"
 	
@@ -91,11 +92,17 @@ help () { #This is a little too much @ this point...
 	echo -e "	-d[0:3]   DEMO_MODE - DCraw demosaicing mode. Higher modes are slower. 1 is default."
 	echo -e "	  --> Use -d<mode> (no space). 0: Bilinear. 1: VNG (default). 2: PPG. 3: AHD.\n"
 	
-	echo -e "	-H[0:9]   HIGHLIGHT_MODE - 3 to 9 does degrees of colored highlight reconstruction, 1 and 2 allow clipping."
-	echo -e "	  --> Use -H<number> (no space). 0 is default.\n"
+	echo -e "	-f   FOUR_COLOR - Interpolate RGB as four colors. Can often fix weirdness with demosaicing.\n"
+	
+	echo -e "	-H[0:9]   HIGHLIGHT_MODE - 2 looks the best, without major modifications. 0 is also a safe bet."
+	echo -e "	  --> Use -H<number> (no space). 0 clips. 1 allows colored highlights. 2 adjusts highlights to grey."
+	echo -e "	  --> 3 through 9 do highlight reconstruction with a certain tone. See dcraw documentation.\n"
 	
 	echo -e "	-b   BADPIXELS - Fix focus pixels issue using dfort's script."
-	echo -e "	  --> His file can be found at https://bitbucket.org/daniel_fort/ml-focus-pixels/src."
+	echo -e "	  --> His file can be found at https://bitbucket.org/daniel_fort/ml-focus-pixels/src.\n"
+	
+	echo -e "	-a<path>   BADPIXEL_PATH - Use, appending to the generated one, your own .badpixels file. REQUIRES -b."
+	echo -e "	  --> Use -a<path> (no space). How to: http://www.dl-c.com/board/viewtopic.php?f=4&t=686\n"
 	
 	echo -e "	-n[int]   NOISE_REDUC - This is the threshold of wavelet denoising - specify to use."
 	echo -e "	  --> Use -n<number>. Defaults to no denoising. 150 tends to be a good setting; 350 starts to look strange.\n"
@@ -160,7 +167,7 @@ parseArgs() { #Holy garbage
 			let ARGNUM--
 		fi
 		if [ `echo ${ARG} | cut -c2-2` = "f" ]; then
-			FPS=`echo ${ARG} | cut -c3-${#ARG}`
+			FOUR_COLOR="-f"
 			let ARGNUM--
 		fi
 		if [ `echo ${ARG} | cut -c2-2` = "y" ]; then
@@ -187,7 +194,7 @@ parseArgs() { #Holy garbage
 		fi
 		if [ `echo ${ARG} | cut -c2-2` = "p" ]; then
 			PROXY=`echo ${ARG} | cut -c3-3`
-			case ${mode} in
+			case ${PROXY} in
 				"0") isJPG=false; isH264=false
 				;;
 				"1") isJPG=false; isH264=true
@@ -205,6 +212,10 @@ parseArgs() { #Holy garbage
 		fi
 		if [ `echo ${ARG} | cut -c2-2` = "o" ]; then
 			OUTDIR=`echo ${ARG} | cut -c3-${#ARG}`
+			let ARGNUM--
+		fi
+		if [ `echo ${ARG} | cut -c2-2` = "a" ]; then
+			BADPIXEL_PATH=`echo ${ARG} | cut -c3-${#ARG}`
 			let ARGNUM--
 		fi
 		if [ `echo ${ARG} | cut -c2-2` = "n" ]; then
@@ -325,7 +336,7 @@ ARGNUM=$#
 
 for ARG in $*; do
 #Evaluate command line arguments. ARGNUM decrements to keep track of how many files there are to process.
-	parseArgs
+	parseArgs # <-- Has a continue statement inside of it.
 	
 #Check that main dependencies exist.
 	checkDeps
@@ -336,7 +347,7 @@ for ARG in $*; do
 	
 	list=""
 	for item in $remArr; do
-		if [ -z $list ]; then
+		if [ -z "${list}" ]; then
 			list="${item}"
 		else
 			list="${list}, ${item}"
@@ -348,8 +359,9 @@ for ARG in $*; do
 #PREPARATION
 
 #Basic Directory Structure.
-	if [ $OUTDIR != $PWD ]; then
-		mkdirS $OUTDIR
+	if [ $OUTDIR != $PWD ] && [ isOutGen == false ]; then
+		mkdir -p $OUTDIR #NO RISKS. WE REMEMBER THE LUT.py. RIP OLD FRIEND.
+		isOutGen=true
 	fi
 		
 	BASE=$(basename "$ARG")
@@ -368,7 +380,23 @@ for ARG in $*; do
 		echo -e "\e[1m${TRUNC_ARG}:\e[0m Generating badpixels file..."
 		
 		bad_name="badpixels_${TRUNC_ARG}.txt"
-		$MLV_BP -o "${TMP}/${bad_name}" $ARG
+		
+		if [ $EXT == "MLV" ] || [ $EXT == "mlv" ]; then
+			$MLV_BP -o "${TMP}/${bad_name}" $ARG
+		elif [ $EXT == "RAW" ] || [ $EXT == "raw" ]; then
+			$MLV_BP -o "${TMP}/${bad_name}" $ARG
+		fi
+		
+		if [ ! -z $BADPIXEL_PATH ]; then
+			if [ -f "${TMP}/${bad_name}" ]; then
+				mv "${TMP}/${bad_name}" "${TMP}/bp_gen"
+				cp $BADPIXEL_PATH "${TMP}/bp_imp"
+				
+				{ cat "${TMP}/bp_gen" && cat "${TMP}/bp_imp"; } > "${TMP}/${bad_name}" #Combine my file with the generated file.
+			else
+				cp $BADPIXEL_PATH "${TMP}/${bad_name}"
+			fi
+		fi
 		
 		BADPIXELS="-P ${TMP}/${bad_name}"
 	fi
@@ -377,9 +405,10 @@ for ARG in $*; do
 	echo -e "\n\e[1m${TRUNC_ARG}:\e[0m Dumping to DNG Sequence..."
 	
 	if [ $EXT == "MLV" ] || [ $EXT == "mlv" ]; then
+		FPS=`${MLV_DUMP} -v -m ${ARG} | grep FPS | awk 'FNR == 1 {print $3}'`
 		$MLV_DUMP $ARG -o "${TMP}/${TRUNC_ARG}_" --dng --no-cs >/dev/null 2>/dev/null
 	elif [ $EXT == "RAW" ] || [ $EXT == "raw" ]; then
-		$RAW_DUMP $ARG "${TMP}/${TRUNC_ARG}_" >/dev/null 2>/dev/null
+		FPS=`$RAW_DUMP $ARG "${TMP}/${TRUNC_ARG}_" | awk '/FPS/ { print $3; }'` #Run the dump while awking for the FPS.
 	fi
 		
 	FRAMES=`expr $(ls -1U ${TMP} | wc -l) - 1`
@@ -389,7 +418,7 @@ for ARG in $*; do
 	if [ $GEN_WHITE == true ]; then
 		n=`echo "${WHITE_SPD} + 1" | bc`
 		
-		i=1
+		i=0
 		trap "rm -rf ${FILE}; exit 1" INT
 		for file in $TMP/*.dng; do 
 			if [ `echo "${i} % ${n}" | bc` -eq 0 ] || [ $i -eq 1 ]; then #Only develop every nth file - we're averaging, after all!
@@ -449,10 +478,10 @@ for ARG in $*; do
 		mkdirS $TIFF
 		
 #Convert all the actual DNGs to TIFFs.
-		i=1
+		i=0
 		trap "rm -rf ${FILE}; exit 1" INT
 		for file in $TMP/*.dng; do
-			dcraw -q $DEMO_MODE $BADPIXELS $WHITE -H $HIGHLIGHT_MODE -g $GAMMA $NOISE_REDUC -o 0 $DEPTH -T "${file}"
+			dcraw -q $DEMO_MODE $FOUR_COLOR $BADPIXELS $WHITE -H $HIGHLIGHT_MODE -g $GAMMA $NOISE_REDUC -o 0 $DEPTH -T "${file}"
 			echo -e "\e[2K\rDNG Development (dcraw): Frame ${i}/${FRAMES}.\c"
 			let i++
 		done
@@ -461,23 +490,15 @@ for ARG in $*; do
 		if [ $isLUT == true ]; then
 			echo -e "\n\n\e[1m${TRUNC_ARG}:\e[0m Applying LUT to ${FRAMES} TIFFs...\n"
 			
-			i=1
-			trap "rm -rf ${FILE}; exit 1" INT
-			for tiff in $TMP/*.tiff; do
-				output=$(printf "${TMP}/LUT_${TRUNC_ARG}_%06d" ${i})
-				ffmpeg -i $tiff -loglevel panic -vf $LUT "${output}.tiff"
-				
-				rm $tiff
-				
-				echo -e "\e[2K\rApplying LUT (ffmpeg): Frame ${i}/${FRAMES}.\c"
-				let i++
-			done
+			ffmpeg -f image2 -i "${TMP}/${TRUNC_ARG}_%06d.tiff" -loglevel panic -stats -vf $LUT "${TIFF}/LUT_${TRUNC_ARG}_%06d.tiff"
+			
+			rm $TMP/*.tiff
 		fi
 		
 		echo -e "\n\n\e[1m${TRUNC_ARG}:\e[0m Processing ${FRAMES} TIFFs...\n"
 		
 		jpgProxy() {
-			i=1
+			i=0
 			trap "rm -rf ${FILE}; exit 1" INT
 			for tiff in $TMP/*.tiff; do	
 				output=$(printf "${PROXY}/${TRUNC_ARG}_%06d" ${i})
@@ -497,7 +518,7 @@ for ARG in $*; do
 		#Move tiffs into place.
 		trap "rm -rf ${FILE}; exit 1" INT
 		for tiff in $TMP/*.tiff; do		
-			mv $tiff $TIFF
+			mv $tiff $TIFF >/dev/null 2>/dev/null
 		done
 fi
 	
@@ -517,7 +538,7 @@ fi
 		#LUT is automatically applied if argument was passed.
 		vidHQ() {
 			find "${TMP}" -maxdepth 1 -iname '*.dng' -print0 | sort -z | xargs -0 \
-				dcraw -c -q $DEMO_MODE $BADPIXELS $WHITE -H $HIGHLIGHT_MODE -g $GAMMA $NOISE_REDUC -o 0 $DEPTH | \
+				dcraw -c -q $DEMO_MODE $FOUR_COLOR $BADPIXELS $WHITE -H $HIGHLIGHT_MODE -g $GAMMA $NOISE_REDUC -o 0 $DEPTH | \
 				ffmpeg -f image2pipe -vcodec ppm -r $FPS -i pipe:0 \
 					-loglevel panic -stats $SOUND -vcodec prores_ks -n -r $FPS -profile:v 4444 -alpha_bits 0 -vendor ap4h $LUT $SOUND_ACTION "${VID}_hq.mov"
 		} #-loglevel panic -stats

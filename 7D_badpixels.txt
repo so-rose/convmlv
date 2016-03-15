@@ -1,0 +1,24 @@
+# For 1080p Video on my Canon 7D Only, (as far as I know)
+
+# Remember, timestamp affects if the correction will be applied! Files created before the timestamp are unaffected.
+# Always use "dcraw -v -d -j -t 0 -6 -T" when locating bad pixels. Test using a DNG: "dcraw -v -a -4 -T <file>.dng".
+
+# Format is: pixel column, pixel row, UNIX time of death. Get this last one using date +%s
+
+# FINALLY: Every camera has/develops its own dead pixels! Keep a file around per camera!
+
+# DOA - Discovered 3/14/16
+432 481 0
+197 1013 0
+167 677 0
+343 803 0
+183 142 0
+817 337 0
+1507 561 0
+1490 921 0
+1887 673 0
+284 149 0
+1023 320 0
+1059 1023 0
+1639 988 0
+322 953 0

@@ -20,8 +20,8 @@ isOutGen=false
 MOVIE=false
 FPS=24 #Will be read from .MLV.
 IMAGES=false
-isJPG=true
-isH264=true
+isJPG=false
+isH264=false
 KEEP_DNGS=false
 FOUR_COLOR=""
 
@@ -529,36 +529,68 @@ fi
 		SCALE=`echo "($(echo "${PROXY_SCALE}" | sed 's/%//') / 100) * 2" | bc -l` #Get scale as factor, *2 for 50%
 		
 		SOUND="-i ${TMP}/${TRUNC_ARG}_.wav"
-		SOUND_ACTION="-c:a copy"
+		SOUND_ACTION="-c:a mp3"
 		if [ ! -f $SOUND_PATH ]; then
 			SOUND=""
 			SOUND_ACTION=""
 		fi
 		
 		#LUT is automatically applied if argument was passed.
-		vidHQ() {
-			find "${TMP}" -maxdepth 1 -iname '*.dng' -print0 | sort -z | xargs -0 \
-				dcraw -c -q $DEMO_MODE $FOUR_COLOR $BADPIXELS $WHITE -H $HIGHLIGHT_MODE -g $GAMMA $NOISE_REDUC -o 0 $DEPTH | \
-				ffmpeg -f image2pipe -vcodec ppm -r $FPS -i pipe:0 \
-					-loglevel panic -stats $SOUND -vcodec prores_ks -n -r $FPS -profile:v 4444 -alpha_bits 0 -vendor ap4h $LUT $SOUND_ACTION "${VID}_hq.mov"
+		
+		mov_main() {
+			ffmpeg -f image2pipe -vcodec ppm -r $FPS -i pipe:0 \
+				-loglevel panic -stats $SOUND -vcodec prores_ks -n -r $FPS -profile:v 4444 -alpha_bits 0 -vendor ap4h $LUT $SOUND_ACTION "${VID}_hq.mov"
 		} #-loglevel panic -stats
-
-		vidLQ() {
-			find "${TMP}" -maxdepth 1 -iname '*.dng' -print0 | sort -z | xargs -0 \
-				dcraw -c -q 0 $BADPIXELS $WHITE -H $HIGHLIGHT_MODE -g $GAMMA $NOISE_REDUC -o 0 | \
-				ffmpeg -f image2pipe -vcodec ppm -r $FPS -i pipe:0 \
-					-loglevel panic -stats $SOUND -c:v libx264 -n -r $FPS -preset fast -vf "scale=trunc(iw/2)*${SCALE}:trunc(ih/2)*${SCALE}" -crf 23 $LUT -c:a mp3 "${VID}_lq.mp4"
-			#The option -vf "scale=trunc(iw/2)*2:trunc(ih/2)*2" fixes when x264 is unhappy about non-2 divisible dimensions.
-		}
+		
+		mov_prox() {
+			ffmpeg -f image2pipe -vcodec ppm -r $FPS -i pipe:0 \
+				-loglevel panic -stats $SOUND -c:v libx264 -n -r $FPS -preset fast -vf "scale=trunc(iw/2)*${SCALE}:trunc(ih/2)*${SCALE}" -crf 23 $LUT -c:a mp3 "${VID}_lq.mp4"
+		} #The option -vf "scale=trunc(iw/2)*2:trunc(ih/2)*2" fixes when x264 is unhappy about non-2 divisible dimensions.
 		
 		#Pipe through which dcraw will spit out its data.
-		PIPE="${TMP}/enc_pipe"
-		mkfifo $PIPE
+		dcrawOpt() {
+			find "${TMP}" -maxdepth 1 -iname '*.dng' -print0 | sort -z | xargs -0 \
+				dcraw -c -q $DEMO_MODE $FOUR_COLOR $BADPIXELS $WHITE -H $HIGHLIGHT_MODE -g $GAMMA $NOISE_REDUC -o 0 $DEPTH
+		}
+		
+		runSim() {
+			# Command: cat $PIPE | cmd1 & cmdOrig | tee $PIPE | cmd2
+			
+			# cat $PIPE | cmd1 - gives output of pipe live. Pipes it into cmd1. Nothing yet; just setup.
+			# & - runs the next part in the background.
+			# cmdOrig | tee $PIPE | cmd2 - cmdOrig pipes into the tee, which splits it back into the previous pipe, piping on to cmd2!
+			
+			# End Result: Output of cmdOrig is piped into cmd1 and cmd2, which execute, both printing to stdout.
+			
+			cmdOrig=$1
+			cmd1=$2
+			cmd2=$3
+			
+			#~ echo $cmdOrig $cmd1 $cmd2
+			#~ echo $($cmdOrig)
+			
+			PIPE="${TMP}/pipe_$(date +%s)"
+			mkfifo $PIPE
+			
+			cat $PIPE | $cmd1 & $cmdOrig | tee $PIPE | $cmd2 #The magic of simultaneous execution ^_^
+			#~ cat $PIPE | tr 'e' 'a' & echo 'hello' | tee $PIPE | tr 'e' 'o' #The magic of simultaneous execution ^_^
+		}
 		
 		#Here we go!
 		if [ $isH264 == true ]; then
 			echo -e "\n\n\e[1m${TRUNC_ARG}:\e[0m Encoding to ProRes and Proxy..."
-			cat $PIPE | vidLQ & echo "text" | tee $PIPE | vidHQ #The magic of simultaneous execution ^_^
+			
+			bench() {
+				first=`echo "$(date +%s%N | cut -b1-13) / 1000" | bc -l`
+				$1
+				end=`echo "($(date +%s%N | cut -b1-13) / 1000 ) - ${first}" | bc -l`
+				echo $end
+			} #Just a test :).
+			
+			#~ cat $PIPE | vidLQ & echo "text" | tee $PIPE | vidHQ # Old method. Surprised it worked... Slightly faster.
+			
+			runSim dcrawOpt
+			
 		else
 			echo -e "\n\n\e[1m${TRUNC_ARG}:\e[0m Encoding to ProRes..."
 			vidHQ

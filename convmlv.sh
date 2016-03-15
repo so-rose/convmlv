@@ -392,7 +392,7 @@ for ARG in $*; do
 				mv "${TMP}/${bad_name}" "${TMP}/bp_gen"
 				cp $BADPIXEL_PATH "${TMP}/bp_imp"
 				
-				{ cat "${TMP}/bp_gen" && cat "${TMP}/bp_imp"; } > "${TMP}/${bad_name}" #Combine my file with the generated file.
+				{ cat "${TMP}/bp_gen" && cat "${TMP}/bp_imp"; } > "${TMP}/${bad_name}" #Combine specified file with the generated file.
 			else
 				cp $BADPIXEL_PATH "${TMP}/${bad_name}"
 			fi
@@ -517,8 +517,8 @@ for ARG in $*; do
 		
 		#Move tiffs into place.
 		trap "rm -rf ${FILE}; exit 1" INT
-		for tiff in $TMP/*.tiff; do		
-			mv $tiff $TIFF >/dev/null 2>/dev/null
+		for tiff in $TMP/*.tiff; do	
+			mv $tiff $TIFF >/dev/null 2>/dev/null #Gets mad if a LUT was applied, as all the tiffs are then deleted. Suppress and noone will know :).
 		done
 fi
 	

@@ -147,7 +147,7 @@ mkdirS() {
 		while true; do
 			read -p "Overwrite ${path}? [y/n] " yn
 			case $yn in
-				[Yy]* ) rm -rf $path; mkdir -p $path >/dev/null 2>/dev/null; break
+				[Yy]* ) echo -e ""; rm -rf $path; mkdir -p $path >/dev/null 2>/dev/null; break
 				;;
 				[Nn]* ) echo -e "\n\e[0;31m\e[1mDirectory ${path} won't be created.\e[0m\n"; exit 0
 				;;
@@ -487,7 +487,7 @@ for ARG in $*; do
 		echo -e "Correction Factor (RGB): ${BALANCE} 1.0\n"
 	fi
 
-	echo -e "\e[1m${TRUNC_ARG}:\e[0m Converting ${FRAMES} DNGs to TIFF...\n"
+	echo -e "\e[1m${TRUNC_ARG}:\e[0m Converting ${FRAMES} DNGs to TIFF..."
 
 #Move .wav.
 	SOUND_PATH="${TMP}/${TRUNC_ARG}_.wav"
@@ -495,27 +495,21 @@ for ARG in $*; do
 	if [ ! -f $SOUND_PATH ]; then
 		echo -e "*Not moving .wav, because it doesn't exist.\n"
 	else
-		echo -e "Moving .wav.\n"
+		echo -e "*Moving .wav.\n"
 		cp $SOUND_PATH $FILE
 	fi
 	
-#New Fancy Stuff
-	
-	TIFF="${FILE}/tiff_${TRUNC_ARG}"
-	PROXY="${FILE}/proxy_${TRUNC_ARG}"
-	
-	mkdirS $TIFF
-	mkdirS $PROXY
+#DEFINE FUNCTIONS
 	
 	dcrawFile() {
 		dcraw -c -q $DEMO_MODE $FOUR_COLOR $BADPIXELS $WHITE -H $HIGHLIGHT_MODE -g $GAMMA $NOISE_REDUC -o 0 $DEPTH $file
-		#Requires some file outside the scope of the function.
+		#Requires some file outside the scope of the function. Pipes that file.
 	}
 	
 	dcrawOpt() {
 		find "${TMP}" -maxdepth 1 -iname '*.dng' -print0 | sort -z | xargs -0 \
 			dcraw -c -q $DEMO_MODE $FOUR_COLOR $BADPIXELS $WHITE -H $HIGHLIGHT_MODE -g $GAMMA $NOISE_REDUC -o 0 $DEPTH
-	}
+	} #Is prepared to pipe all the files in TMP outwards.
 	
 	img_main() {
 		convert $DEPTH_OUT - $COMPRESS $(printf "${TIFF}/${TRUNC_ARG}_%06d.tiff" $i) #Make sure to do deep analysis later.
@@ -523,22 +517,8 @@ for ARG in $*; do
 	}
 	
 	img_prox() {
-		convert - -quality 90 $(printf "${PROXY}/${TRUNC_ARG}_%06d.jpg" $i)
-	}
-	
-	i=0
-	trap "rm -rf ${FILE}; exit 1" INT
-	for file in $TMP/*.dng; do
-		if [ $isJPG == true ]; then
-			runSim dcrawFile img_main img_prox
-		else
-			dcrawFile $file | img_main
-		fi
-		echo -e "\e[2K\rDNG Development (dcraw): Frame ${i}/${FRAMES}.\c"
-		let i++
-	done
-	
-	exit 1
+		convert - -quality 90 -resize $PROXY_SCALE $(printf "${PROXY}/${TRUNC_ARG}_%06d.jpg" $i)
+	} #-quiet
 	
 	mov_main() {
 		ffmpeg -f image2pipe -vcodec ppm -r $FPS -i pipe:0 \
@@ -550,69 +530,50 @@ for ARG in $*; do
 			-loglevel panic -stats $SOUND -c:v libx264 -n -r $FPS -preset fast -vf "scale=trunc(iw/2)*${SCALE}:trunc(ih/2)*${SCALE}" -crf 23 $LUT -c:a mp3 "${VID}_lq.mp4"
 	} #The option -vf "scale=trunc(iw/2)*2:trunc(ih/2)*2" fixes when x264 is unhappy about non-2 divisible dimensions.
 	
-	#~ exit 0
 
 #IMAGE PROCESSING
 	if [ $IMAGES == true ] ; then
-		echo -e "\n\n\e[1m${TRUNC_ARG}:\e[0m Processing Image Sequence..."
+		echo -e "\e[1m${TRUNC_ARG}:\e[0m Processing Image Sequence...\n"
 		
 #Define Image Directories, Create TIFF directory
 		TIFF="${FILE}/tiff_${TRUNC_ARG}"
 		PROXY="${FILE}/proxy_${TRUNC_ARG}"
 		
 		mkdirS $TIFF
-		mkdirS $PROXY
+		
+		if [ $isJPG == true ]; then
+			mkdirS $PROXY
+		fi
 		
 #Convert all the actual DNGs to TIFFs.
-		i=0
+		i=0 #Very important variable. See functions called.
 		trap "rm -rf ${FILE}; exit 1" INT
 		for file in $TMP/*.dng; do
-			dcraw -q $DEMO_MODE $FOUR_COLOR $BADPIXELS $WHITE -H $HIGHLIGHT_MODE -g $GAMMA $NOISE_REDUC -o 0 $DEPTH -T "${file}"
-			echo -e "\e[2K\rDNG Development (dcraw): Frame ${i}/${FRAMES}.\c"
+			if [ $isJPG == true ]; then
+				runSim dcrawFile img_main img_prox
+				echo -e "\e[2K\rDNG to TIFF/JPG (dcraw): Frame ${i}/${FRAMES}.\c"
+			else
+				dcrawFile $file | img_main
+				echo -e "\e[2K\rDNG to TIFF (dcraw): Frame ${i}/${FRAMES}.\c"
+			fi
 			let i++
 		done
+		echo -e "\n"
 		
 #Potentially apply a LUT.
-		if [ $isLUT == true ]; then
-			echo -e "\n\n\e[1m${TRUNC_ARG}:\e[0m Applying LUT to ${FRAMES} TIFFs...\n"
+		if [ $isLUT == true ]; then #Some way to package this into the development itself without piping hell?
+			echo -e "\e[1m${TRUNC_ARG}:\e[0m Applying LUT to ${FRAMES} TIFFs...\n"
 			
 			ffmpeg -f image2 -i "${TMP}/${TRUNC_ARG}_%06d.tiff" -loglevel panic -stats -vf $LUT "${TIFF}/LUT_${TRUNC_ARG}_%06d.tiff"
 			
 			rm $TMP/*.tiff
 		fi
-		
-		echo -e "\n\n\e[1m${TRUNC_ARG}:\e[0m Processing ${FRAMES} TIFFs...\n"
-		
-		jpgProxy() {
-			i=0
-			trap "rm -rf ${FILE}; exit 1" INT
-			for tiff in $TMP/*.tiff; do	
-				output=$(printf "${PROXY}/${TRUNC_ARG}_%06d" ${i})
-				convert -quiet $tiff -resize $PROXY_SCALE "${output}.jpg"  > /dev/null #PROXY GENERATION
-				
-				echo -e "\e[2K\rProxy Generation (IM): Frame ${i}/${FRAMES}.\c"
-				let i++
-			done
-		}
-
-#Image Proxy Generation
-		if [ $isJPG == true ]; then
-			mkdirS $PROXY #No need to create the proxy directory until we know that proxies are being made.
-			jpgProxy
-		fi
-		
-		#Move tiffs into place.
-		trap "rm -rf ${FILE}; exit 1" INT
-		for tiff in $TMP/*.tiff; do	
-			mv $tiff $TIFF >/dev/null 2>/dev/null #Gets mad if a LUT was applied, as all the tiffs are then deleted. Suppress and noone will know :).
-		done
-fi
-	
+	fi
 	
 #MOVIE PROCESSING
 	if [ $MOVIE = true ]; then
 		VID="${FILE}/${TRUNC_ARG}"
-		SCALE=`echo "($(echo "${PROXY_SCALE}" | sed 's/%//') / 100) * 2" | bc -l` #Get scale as factor, *2 for 50%
+		SCALE=`echo "($(echo "${PROXY_SCALE}" | sed 's/%//') / 100) * 2" | bc -l` #Get scale as factor for halved video, *2 for 50%
 		
 		SOUND="-i ${TMP}/${TRUNC_ARG}_.wav"
 		SOUND_ACTION="-c:a mp3"
@@ -623,28 +584,17 @@ fi
 		
 		#LUT is automatically applied if argument was passed.
 		
-		#Here we go!
 		if [ $isH264 == true ]; then
-			echo -e "\n\n\e[1m${TRUNC_ARG}:\e[0m Encoding to ProRes and Proxy..."
-			
-			bench() {
-				first=`echo "$(date +%s%N | cut -b1-13) / 1000" | bc -l`
-				$1
-				end=`echo "($(date +%s%N | cut -b1-13) / 1000 ) - ${first}" | bc -l`
-				echo $end
-			} #Just a test :).
-			
-			#~ cat $PIPE | vidLQ & echo "text" | tee $PIPE | vidHQ # Old method. Surprised it worked... Slightly faster.
-			
+			echo -e "\e[1m${TRUNC_ARG}:\e[0m Encoding to ProRes/H264...\n"
 			runSim dcrawOpt mov_main mov_prox
 			
 		else
-			echo -e "\n\n\e[1m${TRUNC_ARG}:\e[0m Encoding to ProRes..."
-			vidHQ
+			echo -e "\e[1m${TRUNC_ARG}:\e[0m Encoding to ProRes...\n"
+			dcrawOpt | mov_main
 		fi
 	fi
 	
-	echo -e "\n\e[1mCleaning Up.\e[0m\n"
+	echo -e "\n\e[1mCleaning Up.\e[0m\n\n"
 	
 #Potentially move DNGs.
 	if [ $KEEP_DNGS == true ]; then
@@ -664,3 +614,14 @@ fi
 done
 
 exit 0
+
+test() {
+	bench() {
+		first=`echo "$(date +%s%N | cut -b1-13) / 1000" | bc -l`
+		$1
+		end=`echo "($(date +%s%N | cut -b1-13) / 1000 ) - ${first}" | bc -l`
+		echo $end
+	} #Just a test :).
+
+	cat $PIPE | vidLQ & echo "text" | tee $PIPE | vidHQ # Old method. Surprised it worked...
+}

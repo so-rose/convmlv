@@ -20,6 +20,7 @@ isOutGen=false
 MOVIE=false
 FPS=24 #Will be read from .MLV.
 IMAGES=false
+COMPRESS=""
 isJPG=false
 isH264=false
 KEEP_DNGS=false
@@ -31,6 +32,7 @@ PROXY_SCALE="75%"
 DEMO_MODE="1"
 GAMMA="1 1"
 DEPTH="-4"
+DEPTH_OUT="-depth 16"
 NOISE_REDUC=""
 BADPIXELS=""
 BADPIXEL_PATH=""
@@ -75,11 +77,14 @@ help () { #This is a little too much @ this point...
 	echo -e "	-B<path>   MLV_BP - The path to mlv2badpixels.sh (by dfort). Default is './mlv2badpixels.sh'.\n\n"
 	
 	echo -e "OPTIONS, OUTPUT:"
-	echo -e "	-i   IMAGE - Specify to create a TIFF sequence.\n" ###
+	echo -e "	-i   IMAGE - Specify to create a TIFF sequence.\n" 
 	
-	echo -e "	-m   MOVIE - Specify to create a Prores4444 video.\n" ###
+	echo -e "	-c   COMPRESS - Specify to compress the TIFF sequence."
+	echo -e "	  --> Uses ZIP compression for best 16-bit compression."
+	
+	echo -e "	-m   MOVIE - Specify to create a Prores4444 video.\n" 
 		
-	echo -e "	-p[0:3]   PROXY - Specifies the proxy mode." ###
+	echo -e "	-p[0:3]   PROXY - Specifies the proxy mode." 
 	echo -e "	  --> 0: No proxies. 1: H.264 proxy. 2: JPG proxy sequence. 3: Both.\n"
 	
 	echo -e "	-s[0%:100%]   PROXY_SCALE - the size, in %, of the proxy output."
@@ -184,6 +189,10 @@ parseArgs() { #Holy garbage
 			MOVIE=true
 			let ARGNUM--
 		fi
+		if [ `echo ${ARG} | cut -c2-2` = "c" ]; then
+			COMPRESS="-compress zip"
+			let ARGNUM--
+		fi
 		if [ `echo ${ARG} | cut -c2-2` = "M" ]; then
 			MLV_DUMP=`echo ${ARG} | cut -c3-${#ARG}`
 			let ARGNUM--
@@ -250,6 +259,7 @@ parseArgs() { #Holy garbage
 		fi
 		if [ `echo ${ARG} | cut -c2-2` = "S" ]; then
 			DEPTH=""
+			DEPTH_OUT=""
 			let ARGNUM--
 		fi
 		if [ `echo ${ARG} | cut -c2-2` = "w" ]; then
@@ -327,6 +337,30 @@ checkDeps() {
 		fi
 }
 
+runSim() {
+	# Command: cat $PIPE | cmd1 & cmdOrig | tee $PIPE | cmd2
+	
+	# cat $PIPE | cmd1 - gives output of pipe live. Pipes it into cmd1. Nothing yet; just setup.
+	# & - runs the next part in the background.
+	# cmdOrig | tee $PIPE | cmd2 - cmdOrig pipes into the tee, which splits it back into the previous pipe, piping on to cmd2!
+	
+	# End Result: Output of cmdOrig is piped into cmd1 and cmd2, which execute, both printing to stdout.
+	
+	cmdOrig=$1
+	cmd1=$2
+	cmd2=$3
+	
+	#~ echo $cmdOrig $cmd1 $cmd2
+	#~ echo $($cmdOrig)
+	
+	PIPE="${TMP}/pipe_$(date +%s%N | cut -b1-13)"
+	mkfifo $PIPE
+	
+	cat $PIPE | $cmd1 & $cmdOrig | tee $PIPE | $cmd2 #The magic of simultaneous execution ^_^
+	#~ cat $PIPE | tr 'e' 'a' & echo 'hello' | tee $PIPE | tr 'e' 'o' #The magic of simultaneous execution ^_^
+}
+
+
 if [ $# == 0 ]; then
 	help
 	echo -e "\e[0;31m\e[1mNo arguments, no joy!!!\e[0m\n"
@@ -377,7 +411,7 @@ for ARG in $*; do
 	
 #Create badpixels file.
 	if [ $isBP == true ]; then
-		echo -e "\e[1m${TRUNC_ARG}:\e[0m Generating badpixels file..."
+		echo -e "\e[1m${TRUNC_ARG}:\e[0m Generating badpixels file...\n"
 		
 		bad_name="badpixels_${TRUNC_ARG}.txt"
 		
@@ -402,7 +436,7 @@ for ARG in $*; do
 	fi
 	
 #Dump to DNG sequence
-	echo -e "\n\e[1m${TRUNC_ARG}:\e[0m Dumping to DNG Sequence..."
+	echo -e "\e[1m${TRUNC_ARG}:\e[0m Dumping to DNG Sequence...\n"
 	
 	if [ $EXT == "MLV" ] || [ $EXT == "mlv" ]; then
 		FPS=`${MLV_DUMP} -v -m ${ARG} | grep FPS | awk 'FNR == 1 {print $3}'`
@@ -414,7 +448,7 @@ for ARG in $*; do
 	FRAMES=`expr $(ls -1U ${TMP} | wc -l) - 1`
 	
 #Get White Balance correction factor (or ignore it all).
-	echo -e "\n\e[1m${TRUNC_ARG}:\e[0m Generating WB...\n"
+	echo -e "\e[1m${TRUNC_ARG}:\e[0m Generating WB...\n"
 	if [ $GEN_WHITE == true ]; then
 		n=`echo "${WHITE_SPD} + 1" | bc`
 		
@@ -436,13 +470,13 @@ for ARG in $*; do
 		done
 		
 		#Read result into a form dcraw likes.
-		echo -e "\n\nCalculating Auto White Balance..."
+		echo -e "Calculating Auto White Balance..."
 		BALANCE=`$BAL $toBal`
 		WHITE="-r ${BALANCE} 1.000000"
-		echo -e "Correction Factor (RGB): ${BALANCE} 1.0"
+		echo -e "Correction Factor (RGB): ${BALANCE} 1.0\n"
 		
 	elif [ $CAMERA_WB == true ]; then
-		echo -e "\n\nRetrieving Camera White Balance..."
+		echo -e "Retrieving Camera White Balance..."
 		
 		trap "rm -rf ${FILE}; exit 1" INT
 		for file in $TMP/*.dng; do
@@ -450,24 +484,75 @@ for ARG in $*; do
 			break
 		done
 		WHITE="-r ${BALANCE} 1.0"
-		echo -e "Correction Factor (RGB): ${BALANCE} 1.0"
+		echo -e "Correction Factor (RGB): ${BALANCE} 1.0\n"
 	fi
 
-	echo -e "\n\e[1m${TRUNC_ARG}:\e[0m Converting ${FRAMES} DNGs to TIFF...\n"
+	echo -e "\e[1m${TRUNC_ARG}:\e[0m Converting ${FRAMES} DNGs to TIFF...\n"
 
 #Move .wav.
 	SOUND_PATH="${TMP}/${TRUNC_ARG}_.wav"
 	
 	if [ ! -f $SOUND_PATH ]; then
-		echo -e "\n*Not moving .wav, because it doesn't exist."
+		echo -e "*Not moving .wav, because it doesn't exist.\n"
 	else
+		echo -e "Moving .wav.\n"
 		cp $SOUND_PATH $FILE
 	fi
 	
+#New Fancy Stuff
+	
+	TIFF="${FILE}/tiff_${TRUNC_ARG}"
+	PROXY="${FILE}/proxy_${TRUNC_ARG}"
+	
+	mkdirS $TIFF
+	mkdirS $PROXY
+	
+	dcrawFile() {
+		dcraw -c -q $DEMO_MODE $FOUR_COLOR $BADPIXELS $WHITE -H $HIGHLIGHT_MODE -g $GAMMA $NOISE_REDUC -o 0 $DEPTH $file
+		#Requires some file outside the scope of the function.
+	}
+	
+	dcrawOpt() {
+		find "${TMP}" -maxdepth 1 -iname '*.dng' -print0 | sort -z | xargs -0 \
+			dcraw -c -q $DEMO_MODE $FOUR_COLOR $BADPIXELS $WHITE -H $HIGHLIGHT_MODE -g $GAMMA $NOISE_REDUC -o 0 $DEPTH
+	}
+	
+	img_main() {
+		convert $DEPTH_OUT - $COMPRESS $(printf "${TIFF}/${TRUNC_ARG}_%06d.tiff" $i) #Make sure to do deep analysis later.
+		#Requires some variable i outside the scope of the function.
+	}
+	
+	img_prox() {
+		convert - -quality 90 $(printf "${PROXY}/${TRUNC_ARG}_%06d.jpg" $i)
+	}
+	
+	i=0
+	trap "rm -rf ${FILE}; exit 1" INT
+	for file in $TMP/*.dng; do
+		if [ $isJPG == true ]; then
+			runSim dcrawFile img_main img_prox
+		else
+			dcrawFile $file | img_main
+		fi
+		echo -e "\e[2K\rDNG Development (dcraw): Frame ${i}/${FRAMES}.\c"
+		let i++
+	done
+	
+	exit 1
+	
+	mov_main() {
+		ffmpeg -f image2pipe -vcodec ppm -r $FPS -i pipe:0 \
+			-loglevel panic -stats $SOUND -vcodec prores_ks -n -r $FPS -profile:v 4444 -alpha_bits 0 -vendor ap4h $LUT $SOUND_ACTION "${VID}_hq.mov"
+	} #-loglevel panic -stats
+	
+	mov_prox() {
+		ffmpeg -f image2pipe -vcodec ppm -r $FPS -i pipe:0 \
+			-loglevel panic -stats $SOUND -c:v libx264 -n -r $FPS -preset fast -vf "scale=trunc(iw/2)*${SCALE}:trunc(ih/2)*${SCALE}" -crf 23 $LUT -c:a mp3 "${VID}_lq.mp4"
+	} #The option -vf "scale=trunc(iw/2)*2:trunc(ih/2)*2" fixes when x264 is unhappy about non-2 divisible dimensions.
+	
+	#~ exit 0
 
 #IMAGE PROCESSING
-
-
 	if [ $IMAGES == true ] ; then
 		echo -e "\n\n\e[1m${TRUNC_ARG}:\e[0m Processing Image Sequence..."
 		
@@ -476,6 +561,7 @@ for ARG in $*; do
 		PROXY="${FILE}/proxy_${TRUNC_ARG}"
 		
 		mkdirS $TIFF
+		mkdirS $PROXY
 		
 #Convert all the actual DNGs to TIFFs.
 		i=0
@@ -537,45 +623,6 @@ fi
 		
 		#LUT is automatically applied if argument was passed.
 		
-		mov_main() {
-			ffmpeg -f image2pipe -vcodec ppm -r $FPS -i pipe:0 \
-				-loglevel panic -stats $SOUND -vcodec prores_ks -n -r $FPS -profile:v 4444 -alpha_bits 0 -vendor ap4h $LUT $SOUND_ACTION "${VID}_hq.mov"
-		} #-loglevel panic -stats
-		
-		mov_prox() {
-			ffmpeg -f image2pipe -vcodec ppm -r $FPS -i pipe:0 \
-				-loglevel panic -stats $SOUND -c:v libx264 -n -r $FPS -preset fast -vf "scale=trunc(iw/2)*${SCALE}:trunc(ih/2)*${SCALE}" -crf 23 $LUT -c:a mp3 "${VID}_lq.mp4"
-		} #The option -vf "scale=trunc(iw/2)*2:trunc(ih/2)*2" fixes when x264 is unhappy about non-2 divisible dimensions.
-		
-		#Pipe through which dcraw will spit out its data.
-		dcrawOpt() {
-			find "${TMP}" -maxdepth 1 -iname '*.dng' -print0 | sort -z | xargs -0 \
-				dcraw -c -q $DEMO_MODE $FOUR_COLOR $BADPIXELS $WHITE -H $HIGHLIGHT_MODE -g $GAMMA $NOISE_REDUC -o 0 $DEPTH
-		}
-		
-		runSim() {
-			# Command: cat $PIPE | cmd1 & cmdOrig | tee $PIPE | cmd2
-			
-			# cat $PIPE | cmd1 - gives output of pipe live. Pipes it into cmd1. Nothing yet; just setup.
-			# & - runs the next part in the background.
-			# cmdOrig | tee $PIPE | cmd2 - cmdOrig pipes into the tee, which splits it back into the previous pipe, piping on to cmd2!
-			
-			# End Result: Output of cmdOrig is piped into cmd1 and cmd2, which execute, both printing to stdout.
-			
-			cmdOrig=$1
-			cmd1=$2
-			cmd2=$3
-			
-			#~ echo $cmdOrig $cmd1 $cmd2
-			#~ echo $($cmdOrig)
-			
-			PIPE="${TMP}/pipe_$(date +%s)"
-			mkfifo $PIPE
-			
-			cat $PIPE | $cmd1 & $cmdOrig | tee $PIPE | $cmd2 #The magic of simultaneous execution ^_^
-			#~ cat $PIPE | tr 'e' 'a' & echo 'hello' | tee $PIPE | tr 'e' 'o' #The magic of simultaneous execution ^_^
-		}
-		
 		#Here we go!
 		if [ $isH264 == true ]; then
 			echo -e "\n\n\e[1m${TRUNC_ARG}:\e[0m Encoding to ProRes and Proxy..."
@@ -589,7 +636,7 @@ fi
 			
 			#~ cat $PIPE | vidLQ & echo "text" | tee $PIPE | vidHQ # Old method. Surprised it worked... Slightly faster.
 			
-			runSim dcrawOpt
+			runSim dcrawOpt mov_main mov_prox
 			
 		else
 			echo -e "\n\n\e[1m${TRUNC_ARG}:\e[0m Encoding to ProRes..."

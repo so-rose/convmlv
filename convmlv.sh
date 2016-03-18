@@ -3,7 +3,7 @@
 #BASIC CONSTANTS
 DEPS="imagemagick dcraw ffmpeg python3 pip3 exiftool xxd" #Dependency package names (Debian). List with -K option.
 PIP_DEPS="numpy Pillow tifffile" #Technically, you don't need Pillow. I'm not really sure :).
-VERSION="1.5.2" #Version string.
+VERSION="1.6.0" #Version string.
 PYTHON="python3"
 
 #NON-STANDARD FILE LOCATIONS
@@ -42,7 +42,7 @@ isBP=false
 WHITE=""
 GEN_WHITE=true
 CAMERA_WB=false
-WHITE_SPD=15
+WHITE_SPD=10
 
 #LUT
 LUT=""
@@ -80,7 +80,7 @@ help () { #This is a little too much @ this point...
 	echo -e "	-i   IMAGE - Specify to create a TIFF sequence.\n" 
 	
 	echo -e "	-c   COMPRESS - Specify to compress the TIFF sequence."
-	echo -e "	  --> Uses ZIP compression for best 16-bit compression."
+	echo -e "	  --> Uses ZIP compression for best 16-bit compression.\n"
 	
 	echo -e "	-m   MOVIE - Specify to create a Prores4444 video.\n" 
 		
@@ -123,8 +123,8 @@ help () { #This is a little too much @ this point...
 	echo -e "	  --> Use -w<mode> (no space)."
 	echo -e "	  --> 0: Auto WB (Requires Python Deps). 1: Camera WB. 2: No Change.\n"
 	
-	echo -e "	-A[int]   WHITE_SPD - This is the speed of the auto white balance, causing quality loss. Defaults to 15."
-	echo -e "	  --> For AWB, the script averages the entire sequence, skipping n frames each time. This value is n.\n"
+	echo -e "	-A[int]   WHITE_SPD - This is the amount of samples from which AWB will be calculated."
+	echo -e "	  -->About this many frames, averaged over the course of the sequence, will be used to do AWB."
 	
 	echo -e "	-l<path>   LUT - This is a path to the 3D LUT. Specify the path to the LUT to use it."
 	echo -e "	  --> Compatibility determined by ffmpeg (.cube is supported)."
@@ -445,29 +445,31 @@ for ARG in $*; do
 		FPS=`$RAW_DUMP $ARG "${TMP}/${TRUNC_ARG}_" | awk '/FPS/ { print $3; }'` #Run the dump while awking for the FPS.
 	fi
 		
-	FRAMES=`expr $(ls -1U ${TMP} | wc -l) - 1`
+	FRAMES=$(find ${TMP} -name "*.dng" | wc -l)
 	
 #Get White Balance correction factor (or ignore it all).
 	echo -e "\e[1m${TRUNC_ARG}:\e[0m Generating WB...\n"
 	if [ $GEN_WHITE == true ]; then
-		n=`echo "${WHITE_SPD} + 1" | bc`
-		
-		i=0
-		trap "rm -rf ${FILE}; exit 1" INT
-		for file in $TMP/*.dng; do 
-			if [ `echo "${i} % ${n}" | bc` -eq 0 ] || [ $i -eq 1 ]; then #Only develop every nth file - we're averaging, after all!
-				dcraw -q 0 $BADPIXELS -r 1 1 1 1 -g $GAMMA -o 0 -T "${file}"
-			fi
-			echo -e "\e[2K\rWB Development: Frame ${i}/${FRAMES}.\c"
-			let i++
-		done
-		
+		if [ $WHITE_SPD -gt $FRAMES ]; then
+			WHITE_SPD=$FRAMES
+		fi
+		n=`echo "${FRAMES} / ${WHITE_SPD}" | bc`
 		toBal="${TMP}/toBal"
 		mkdirS $toBal
 		
-		for tiff in $TMP/*.tiff; do
-			mv $tiff $toBal #TIFF MOVEMENT
+		i=0
+		t=0
+		trap "rm -rf ${FILE}; exit 1" INT
+		for file in $TMP/*.dng; do 
+			if [ `echo "(${i}+1) % ${n}" | bc` -eq 0 ]; then # || [ $i -eq 1 ]; then #Only develop every nth file - we're averaging, after all!
+				dcraw -q 0 $BADPIXELS -r 1 1 1 1 -g $GAMMA -o 0 -T "${file}"
+				mv $file $toBal #TIFF MOVEMENT
+				let t++
+			fi
+			echo -e "\e[2K\rWB Development: Sample ${t}/$(echo "${FRAMES} / $n" | bc) (Frame: $(echo "${i} + 1" | bc)/${FRAMES})\c"
+			let i++
 		done
+		echo ""
 		
 		#Read result into a form dcraw likes.
 		echo -e "Calculating Auto White Balance..."
@@ -486,8 +488,6 @@ for ARG in $*; do
 		WHITE="-r ${BALANCE} 1.0"
 		echo -e "Correction Factor (RGB): ${BALANCE} 1.0\n"
 	fi
-
-	echo -e "\e[1m${TRUNC_ARG}:\e[0m Converting ${FRAMES} DNGs to TIFF..."
 
 #Move .wav.
 	SOUND_PATH="${TMP}/${TRUNC_ARG}_.wav"
@@ -530,15 +530,15 @@ for ARG in $*; do
 			-loglevel panic -stats $SOUND -c:v libx264 -n -r $FPS -preset fast -vf "scale=trunc(iw/2)*${SCALE}:trunc(ih/2)*${SCALE}" -crf 23 $LUT -c:a mp3 "${VID}_lq.mp4"
 	} #The option -vf "scale=trunc(iw/2)*2:trunc(ih/2)*2" fixes when x264 is unhappy about non-2 divisible dimensions.
 	
+	
+	TIFF="${FILE}/tiff_${TRUNC_ARG}"
+	PROXY="${FILE}/proxy_${TRUNC_ARG}"
 
 #IMAGE PROCESSING
 	if [ $IMAGES == true ] ; then
 		echo -e "\e[1m${TRUNC_ARG}:\e[0m Processing Image Sequence...\n"
 		
 #Define Image Directories, Create TIFF directory
-		TIFF="${FILE}/tiff_${TRUNC_ARG}"
-		PROXY="${FILE}/proxy_${TRUNC_ARG}"
-		
 		mkdirS $TIFF
 		
 		if [ $isJPG == true ]; then
@@ -564,37 +564,56 @@ for ARG in $*; do
 		if [ $isLUT == true ]; then #Some way to package this into the development itself without piping hell?
 			echo -e "\e[1m${TRUNC_ARG}:\e[0m Applying LUT to ${FRAMES} TIFFs...\n"
 			
-			ffmpeg -f image2 -i "${TMP}/${TRUNC_ARG}_%06d.tiff" -loglevel panic -stats -vf $LUT "${TIFF}/LUT_${TRUNC_ARG}_%06d.tiff"
+			ffmpeg -f image2 -i "${TIFF}/${TRUNC_ARG}_%06d.tiff" -loglevel panic -stats -vf $LUT "${TIFF}/LUT_${TRUNC_ARG}_%06d.tiff"
 			
 			rm $TMP/*.tiff
 		fi
+	else
+		if [ $isJPG == true ]; then
+			mkdirS $PROXY
+		fi
+		
+		i=0 #Very important variable. See functions called.
+		trap "rm -rf ${FILE}; exit 1" INT
+		for file in $TMP/*.dng; do
+			if [ $isJPG == true ]; then
+				dcrawFile $file | img_prox
+				echo -e "\e[2K\rDNG to JPG (dcraw): Frame ${i}/${FRAMES}.\c"
+			fi
+			let i++
+		done
+		echo -e "\n"
 	fi
 	
 #MOVIE PROCESSING
+	VID="${FILE}/${TRUNC_ARG}"
+	SCALE=`echo "($(echo "${PROXY_SCALE}" | sed 's/%//') / 100) * 2" | bc -l` #Get scale as factor for halved video, *2 for 50%
+	
+	SOUND="-i ${TMP}/${TRUNC_ARG}_.wav"
+	SOUND_ACTION="-c:a mp3"
+	if [ ! -f $SOUND_PATH ]; then
+		SOUND=""
+		SOUND_ACTION=""
+	fi
+	
 	if [ $MOVIE = true ]; then
-		VID="${FILE}/${TRUNC_ARG}"
-		SCALE=`echo "($(echo "${PROXY_SCALE}" | sed 's/%//') / 100) * 2" | bc -l` #Get scale as factor for halved video, *2 for 50%
-		
-		SOUND="-i ${TMP}/${TRUNC_ARG}_.wav"
-		SOUND_ACTION="-c:a mp3"
-		if [ ! -f $SOUND_PATH ]; then
-			SOUND=""
-			SOUND_ACTION=""
-		fi
-		
 		#LUT is automatically applied if argument was passed.
 		
 		if [ $isH264 == true ]; then
-			echo -e "\e[1m${TRUNC_ARG}:\e[0m Encoding to ProRes/H264...\n"
+			echo -e "\e[1m${TRUNC_ARG}:\e[0m Encoding to ProRes/H.264..."
 			runSim dcrawOpt mov_main mov_prox
-			
 		else
-			echo -e "\e[1m${TRUNC_ARG}:\e[0m Encoding to ProRes...\n"
+			echo -e "\e[1m${TRUNC_ARG}:\e[0m Encoding to ProRes..."
 			dcrawOpt | mov_main
+		fi
+	else
+		if [ $isH264 == true ]; then
+			echo -e "\e[1m${TRUNC_ARG}:\e[0m Encoding to H264..."
+			dcrawOpt | mov_prox
 		fi
 	fi
 	
-	echo -e "\n\e[1mCleaning Up.\e[0m\n\n"
+	echo -e "\n\e[1mCleaning Up.\e[0m\n"
 	
 #Potentially move DNGs.
 	if [ $KEEP_DNGS == true ]; then

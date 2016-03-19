@@ -124,7 +124,7 @@ help () { #This is a little too much @ this point...
 	echo -e "	  --> 0: Auto WB (Requires Python Deps). 1: Camera WB. 2: No Change.\n"
 	
 	echo -e "	-A[int]   WHITE_SPD - This is the amount of samples from which AWB will be calculated."
-	echo -e "	  -->About this many frames, averaged over the course of the sequence, will be used to do AWB."
+	echo -e "	  -->About this many frames, averaged over the course of the sequence, will be used to do AWB.\n"
 	
 	echo -e "	-l<path>   LUT - This is a path to the 3D LUT. Specify the path to the LUT to use it."
 	echo -e "	  --> Compatibility determined by ffmpeg (.cube is supported)."
@@ -463,7 +463,8 @@ for ARG in $*; do
 		for file in $TMP/*.dng; do 
 			if [ `echo "(${i}+1) % ${n}" | bc` -eq 0 ]; then # || [ $i -eq 1 ]; then #Only develop every nth file - we're averaging, after all!
 				dcraw -q 0 $BADPIXELS -r 1 1 1 1 -g $GAMMA -o 0 -T "${file}"
-				mv $file $toBal #TIFF MOVEMENT
+				name=$(basename "$file")
+				mv "$TMP/${name%.*}.tiff" $toBal #TIFF MOVEMENT
 				let t++
 			fi
 			echo -e "\e[2K\rWB Development: Sample ${t}/$(echo "${FRAMES} / $n" | bc) (Frame: $(echo "${i} + 1" | bc)/${FRAMES})\c"
@@ -551,10 +552,10 @@ for ARG in $*; do
 		for file in $TMP/*.dng; do
 			if [ $isJPG == true ]; then
 				runSim dcrawFile img_main img_prox
-				echo -e "\e[2K\rDNG to TIFF/JPG (dcraw): Frame ${i}/${FRAMES}.\c"
+				echo -e "\e[2K\rDNG to TIFF/JPG (dcraw): Frame $(echo "${i} + 1" | bc)/${FRAMES}.\c"
 			else
 				dcrawFile $file | img_main
-				echo -e "\e[2K\rDNG to TIFF (dcraw): Frame ${i}/${FRAMES}.\c"
+				echo -e "\e[2K\rDNG to TIFF (dcraw): Frame $(echo "${i} + 1" | bc)/${FRAMES}.\c"
 			fi
 			let i++
 		done
@@ -578,7 +579,7 @@ for ARG in $*; do
 		for file in $TMP/*.dng; do
 			if [ $isJPG == true ]; then
 				dcrawFile $file | img_prox
-				echo -e "\e[2K\rDNG to JPG (dcraw): Frame ${i}/${FRAMES}.\c"
+				echo -e "\e[2K\rDNG to JPG (dcraw): Frame $(echo "${i} + 1" | bc)/${FRAMES}.\c"
 			fi
 			let i++
 		done

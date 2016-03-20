@@ -1,5 +1,28 @@
 #!/bin/bash
 
+#~ The MIT License (MIT)
+
+#~ Copyright (c) [year] [fullname]
+
+#~ Permission is hereby granted, free of charge, to any person obtaining a copy
+#~ of this software and associated documentation files (the "Software"), to deal
+#~ in the Software without restriction, including without limitation the rights
+#~ to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+#~ copies of the Software, and to permit persons to whom the Software is
+#~ furnished to do so, subject to the following conditions:
+
+#~ The above copyright notice and this permission notice shall be included in all
+#~ copies or substantial portions of the Software.
+
+#~ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+#~ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+#~ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+#~ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+#~ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+#~ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+#~ SOFTWARE.
+
+
 #BASIC CONSTANTS
 DEPS="imagemagick dcraw ffmpeg python3 pip3 exiftool xxd" #Dependency package names (Debian). List with -K option.
 PIP_DEPS="numpy Pillow tifffile" #Technically, you don't need Pillow. I'm not really sure :).
@@ -49,7 +72,7 @@ isBP=false
 WHITE=""
 GEN_WHITE=true
 CAMERA_WB=false
-WHITE_SPD=10
+WHITE_SPD=15
 
 #LUT
 LUT=""
@@ -505,7 +528,7 @@ for ARG in $*; do
 		#Prepare for parallelism.
 		lPath="${TMP}/devel.lock"
 		iPath="${TMP}/iCount"
-		touch iPath
+		touch $iPath
 		echo "" >> $iPath #Increment the count. 0 lines is uncountable
 		
 		inc_iso() { #7 args: {} $CR_HDR $TMP $FRAMES $oldFiles $lPath $iPath. {} is a path. Progress is thread safe.
@@ -626,10 +649,6 @@ for ARG in $*; do
 	
 	export -f img_par
 	
-	findPar() {
-		find "${TMP}" -maxdepth 1 -name '*.dng' -print0 | sort -z
-	}
-	
 	SEQ="${FILE}/${IMG_FMT}_${TRUNC_ARG}"
 	PROXY="${FILE}/proxy_${TRUNC_ARG}"
 
@@ -658,7 +677,7 @@ for ARG in $*; do
 		fi
 
 #Convert all the actual DNGs to IMG_FMT, in parallel.
-		findPar | xargs -0 -I {} -P $THREADS -n 1 \
+		find "${TMP}" -maxdepth 1 -name '*.dng' -print0 | sort -z | xargs -0 -I {} -P $THREADS -n 1 \
 			bash -c "img_par {} '$DEMO_MODE' '$FOUR_COLOR' '$BADPIXELS' '$WHITE' '$HIGHLIGHT_MODE' '$GAMMA' '$NOISE_REDUC' '$DEPTH' \
 						'$SEQ' '$TRUNC_ARG' '$IMG_FMT' '$FRAMES' '$DEPTH_OUT' '$COMPRESS' '$isJPG' '$PROXY_SCALE' '$PROXY' \
 					"

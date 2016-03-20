@@ -3,7 +3,7 @@
 #BASIC CONSTANTS
 DEPS="imagemagick dcraw ffmpeg python3 pip3 exiftool xxd" #Dependency package names (Debian). List with -K option.
 PIP_DEPS="numpy Pillow tifffile" #Technically, you don't need Pillow. I'm not really sure :).
-VERSION="1.6.0" #Version string.
+VERSION="1.6.1" #Version string.
 PYTHON="python3"
 
 #NON-STANDARD FILE LOCATIONS
@@ -20,7 +20,9 @@ isOutGen=false
 MOVIE=false
 FPS=24 #Will be read from .MLV.
 IMAGES=false
+IMG_FMT="exr"
 COMPRESS=""
+isCOMPRESS=false
 isJPG=false
 isH264=false
 KEEP_DNGS=false
@@ -52,7 +54,7 @@ isLUT=false
 help () { #This is a little too much @ this point...
 	echo -e "Usage:\n	\033[1m./convmlv.sh\033[0m [OPTIONS] \033[2mmlv_files\033[0m\n"
 			
-	echo -e "INFO:\n	A script allowing you to convert .MLV or .RAW files into TIFF + JPG (proxy) sequences and/or a Prores 4444 .mov,
+	echo -e "INFO:\n	A script allowing you to convert .MLV or .RAW files into TIFF/EXR + JPG (proxy) sequences and/or a Prores 4444 .mov,
 	with an optional H.264 .mp4 preview. Many useful options are exposed.\n"
 
 	echo -e "DEPENDENCIES: *If you don't use a feature, you don't need the dependency!"
@@ -77,14 +79,18 @@ help () { #This is a little too much @ this point...
 	echo -e "	-B<path>   MLV_BP - The path to mlv2badpixels.sh (by dfort). Default is './mlv2badpixels.sh'.\n\n"
 	
 	echo -e "OPTIONS, OUTPUT:"
-	echo -e "	-i   IMAGE - Specify to create a TIFF sequence.\n" 
+	echo -e "	-i   IMAGE - Specify to create an image sequence (EXR by default).\n" 
 	
-	echo -e "	-c   COMPRESS - Specify to compress the TIFF sequence."
-	echo -e "	  --> Uses ZIP compression for best 16-bit compression.\n"
+	echo -e "	-f[0:1]   IMG_FMT - Create a sequence of <format> format, instead of a TIFF sequence.\n"
+	echo -e "	  --> 0: EXR, 1: TIFF." #Future: More formats!
 	
-	echo -e "	-m   MOVIE - Specify to create a Prores4444 video.\n" 
+	echo -e "	-c   COMPRESS - Specify to automatically compress the image sequence losslessly." ###
+	echo -e "	  --> Uses ZIP for TIFF (best for 16-bit), PIZ for EXR (best for grainy images)."
+	echo -e "	  --> EXR's piz compression tends to be faster better.\n"
+	
+	echo -e "	-m   MOVIE - Specify to create a Prores4444 video.\n"
 		
-	echo -e "	-p[0:3]   PROXY - Specifies the proxy mode." 
+	echo -e "	-p[0:3]   PROXY - Specifies the proxy mode. 0 is default." 
 	echo -e "	  --> 0: No proxies. 1: H.264 proxy. 2: JPG proxy sequence. 3: Both.\n"
 	
 	echo -e "	-s[0%:100%]   PROXY_SCALE - the size, in %, of the proxy output."
@@ -97,7 +103,7 @@ help () { #This is a little too much @ this point...
 	echo -e "	-d[0:3]   DEMO_MODE - DCraw demosaicing mode. Higher modes are slower. 1 is default."
 	echo -e "	  --> Use -d<mode> (no space). 0: Bilinear. 1: VNG (default). 2: PPG. 3: AHD.\n"
 	
-	echo -e "	-f   FOUR_COLOR - Interpolate RGB as four colors. Can often fix weirdness with demosaicing.\n"
+	echo -e "	-u   FOUR_COLOR - Interpolate as four colors. Can often fix weirdness with VNG/AHD.\n"
 	
 	echo -e "	-H[0:9]   HIGHLIGHT_MODE - 2 looks the best, without major modifications. 0 is also a safe bet."
 	echo -e "	  --> Use -H<number> (no space). 0 clips. 1 allows colored highlights. 2 adjusts highlights to grey."
@@ -128,7 +134,8 @@ help () { #This is a little too much @ this point...
 	
 	echo -e "	-l<path>   LUT - This is a path to the 3D LUT. Specify the path to the LUT to use it."
 	echo -e "	  --> Compatibility determined by ffmpeg (.cube is supported)."
-	echo -e "	  --> Path to LUT (no space between -l and path). Without specifying -l, no LUT will be applied.\n\n"
+	echo -e "	  --> LUT cannot be applied to EXR sequences."
+	echo -e "	  --> Path to LUT (no space between -l and path).\n\n"
 	
 	echo -e "OPTIONS, DEPENDENCIES:"
 	echo -e "	-K   Debian Package Deps - Lists dependecies. Works with apt-get on Debian; should be similar elsewhere."
@@ -171,8 +178,18 @@ parseArgs() { #Holy garbage
 			PROXY_SCALE=`echo ${ARG} | cut -c3-${#ARG}`
 			let ARGNUM--
 		fi
-		if [ `echo ${ARG} | cut -c2-2` = "f" ]; then
+		if [ `echo ${ARG} | cut -c2-2` = "u" ]; then
 			FOUR_COLOR="-f"
+			let ARGNUM--
+		fi
+		if [ `echo ${ARG} | cut -c2-2` = "f" ]; then
+			mode=`echo ${ARG} | cut -c3-3`
+			case ${mode} in
+				"0") IMG_FMT="exr"
+				;;
+				"1") IMG_FMT="tiff"
+				;;
+			esac
 			let ARGNUM--
 		fi
 		if [ `echo ${ARG} | cut -c2-2` = "y" ]; then
@@ -190,7 +207,7 @@ parseArgs() { #Holy garbage
 			let ARGNUM--
 		fi
 		if [ `echo ${ARG} | cut -c2-2` = "c" ]; then
-			COMPRESS="-compress zip"
+			isCOMPRESS=true
 			let ARGNUM--
 		fi
 		if [ `echo ${ARG} | cut -c2-2` = "M" ]; then
@@ -398,7 +415,7 @@ for ARG in $*; do
 		isOutGen=true
 	fi
 		
-	BASE=$(basename "$ARG")
+	BASE="$(basename "$ARG")"
 	EXT="${BASE##*.}"
 	TRUNC_ARG="${BASE%.*}"
 	
@@ -464,7 +481,7 @@ for ARG in $*; do
 			if [ `echo "(${i}+1) % ${n}" | bc` -eq 0 ]; then # || [ $i -eq 1 ]; then #Only develop every nth file - we're averaging, after all!
 				dcraw -q 0 $BADPIXELS -r 1 1 1 1 -g $GAMMA -o 0 -T "${file}"
 				name=$(basename "$file")
-				mv "$TMP/${name%.*}.tiff" $toBal #TIFF MOVEMENT
+				mv "$TMP/${name%.*}.tiff" $toBal #TIFF MOVEMENT. We use TIFFs here because it's easy for dcraw and helps Python.
 				let t++
 			fi
 			echo -e "\e[2K\rWB Development: Sample ${t}/$(echo "${FRAMES} / $n" | bc) (Frame: $(echo "${i} + 1" | bc)/${FRAMES})\c"
@@ -513,7 +530,7 @@ for ARG in $*; do
 	} #Is prepared to pipe all the files in TMP outwards.
 	
 	img_main() {
-		convert $DEPTH_OUT - $COMPRESS $(printf "${TIFF}/${TRUNC_ARG}_%06d.tiff" $i) #Make sure to do deep analysis later.
+		convert $DEPTH_OUT - $COMPRESS $(printf "${SEQ}/${TRUNC_ARG}_%06d.${IMG_FMT}" $i) #Make sure to do deep analysis later.
 		#Requires some variable i outside the scope of the function.
 	}
 	
@@ -532,30 +549,37 @@ for ARG in $*; do
 	} #The option -vf "scale=trunc(iw/2)*2:trunc(ih/2)*2" fixes when x264 is unhappy about non-2 divisible dimensions.
 	
 	
-	TIFF="${FILE}/tiff_${TRUNC_ARG}"
+	SEQ="${FILE}/${IMG_FMT}_${TRUNC_ARG}"
 	PROXY="${FILE}/proxy_${TRUNC_ARG}"
 
 #IMAGE PROCESSING
 	if [ $IMAGES == true ] ; then
 		echo -e "\e[1m${TRUNC_ARG}:\e[0m Processing Image Sequence...\n"
 		
-#Define Image Directories, Create TIFF directory
-		mkdirS $TIFF
+#Define Image Directories, Create SEQ directory
+		mkdirS $SEQ
 		
 		if [ $isJPG == true ]; then
 			mkdirS $PROXY
 		fi
+#Convert all the actual DNGs to SEQ.
+		if [ $isCOMPRESS == true ]; then
+			if [ $IMG_FMT == "exr" ]; then
+				COMPRESS="-compress piz"
+			elif [ $IMG_FMT == "tiff" ]; then
+				COMPRESS="-compress zip"
+			fi #For now, compression modes are hardcoded.
+		fi
 		
-#Convert all the actual DNGs to TIFFs.
 		i=0 #Very important variable. See functions called.
 		trap "rm -rf ${FILE}; exit 1" INT
 		for file in $TMP/*.dng; do
 			if [ $isJPG == true ]; then
 				runSim dcrawFile img_main img_prox
-				echo -e "\e[2K\rDNG to TIFF/JPG (dcraw): Frame $(echo "${i} + 1" | bc)/${FRAMES}.\c"
+				echo -e "\e[2K\rDNG to ${IMG_FMT^^}/JPG (dcraw): Frame $(echo "${i} + 1" | bc)/${FRAMES}.\c"
 			else
 				dcrawFile $file | img_main
-				echo -e "\e[2K\rDNG to TIFF (dcraw): Frame $(echo "${i} + 1" | bc)/${FRAMES}.\c"
+				echo -e "\e[2K\rDNG to ${IMG_FMT^^} (dcraw): Frame $(echo "${i} + 1" | bc)/${FRAMES}.\c"
 			fi
 			let i++
 		done
@@ -563,11 +587,20 @@ for ARG in $*; do
 		
 #Potentially apply a LUT.
 		if [ $isLUT == true ]; then #Some way to package this into the development itself without piping hell?
-			echo -e "\e[1m${TRUNC_ARG}:\e[0m Applying LUT to ${FRAMES} TIFFs...\n"
-			
-			ffmpeg -f image2 -i "${TIFF}/${TRUNC_ARG}_%06d.tiff" -loglevel panic -stats -vf $LUT "${TIFF}/LUT_${TRUNC_ARG}_%06d.tiff"
-			
-			rm $TMP/*.tiff
+			if [ $IMG_FMT == "exr" ]; then
+				echo -e "*Cannot apply LUT to EXR sequences."
+			else
+				echo -e "\e[1m${TRUNC_ARG}:\e[0m Applying LUT to ${FRAMES} ${IMG_FMT^^}s...\n"
+				
+				lutLoc="${TMP}/lut_conv"
+				mkdirS $lutLoc
+				
+				find $SEQ -name "*.${IMG_FMT}" | xargs -I '{}' mv {} "${lutLoc}"
+				#~ mv "${SEQ}/*.${IMG_FMT}" "${TMP}/lut_conv" #Move back into tmp so it can be processed back out.
+				ffmpeg -f image2 -i "${lutLoc}/${TRUNC_ARG}_%06d.${IMG_FMT}" -loglevel panic -stats -vf $LUT "${SEQ}/${TRUNC_ARG}_%06d.${IMG_FMT}"
+				#ffmpeg doesn't like tiffs.
+			fi
+			#~ exit
 		fi
 	else
 		if [ $isJPG == true ]; then

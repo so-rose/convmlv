@@ -3,8 +3,9 @@
 #BASIC CONSTANTS
 DEPS="imagemagick dcraw ffmpeg python3 pip3 exiftool xxd" #Dependency package names (Debian). List with -K option.
 PIP_DEPS="numpy Pillow tifffile" #Technically, you don't need Pillow. I'm not really sure :).
-VERSION="1.6.1" #Version string.
+VERSION="1.7.0" #Version string.
 PYTHON="python3"
+THREADS=8
 
 #NON-STANDARD FILE LOCATIONS
 MLV_DUMP="./mlv_dump" #Path to mlv_dump location.
@@ -61,7 +62,7 @@ help () { #This is a little too much @ this point...
 	echo -e "INFO:\n	A script allowing you to convert .MLV or .RAW files into TIFF/EXR + JPG (proxy) sequences and/or a Prores 4444 .mov,
 	with an optional H.264 .mp4 preview. Many useful options are exposed.\n"
 
-	echo -e "DEPENDENCIES: *If you don't use a feature, you don't need the dependency!"
+	echo -e "DEPENDENCIES: *If you don't use a feature, you don't need the dependency. Don't use a feature without the dependency."
 	echo -e "	-mlv_dump: For DNG extraction from MLV. http://www.magiclantern.fm/forum/index.php?topic=7122.0"
 	echo -e "	-raw2dng: For DNG extraction from RAW. http://www.magiclantern.fm/forum/index.php?topic=5404.0"
 	echo -e "	-mlv2badpixels.sh: For bad pixel removal. https://bitbucket.org/daniel_fort/ml-focus-pixels/src"
@@ -80,22 +81,24 @@ help () { #This is a little too much @ this point...
 	echo -e "	-M<path>   MLV_DUMP - The path to mlv_dump (no space btwn -M and path). Default is './mlv_dump'."
 	echo -e "	-R<path>   RAW_DUMP - The path to raw2dng (no space btwn -M and path). Default is './raw2dng'."
 	echo -e "	-y<path>   PYTHON - The path or command used to invoke Python. Defaults to python3."
-	echo -e "	-B<path>   MLV_BP - The path to mlv2badpixels.sh (by dfort). Default is './mlv2badpixels.sh'.\n\n"
+	echo -e "	-B<path>   MLV_BP - The path to mlv2badpixels.sh (by dfort). Default is './mlv2badpixels.sh'."
+	echo -e "	-T[int]    Max process threads, for multithreaded parts of the program. Defaults to 8.\n\n"
 	
 	echo -e "OPTIONS, OUTPUT:"
 	echo -e "	-i   IMAGE - Specify to create an image sequence (EXR by default).\n" 
 	
-	echo -e "	-f[0:1]   IMG_FMT - Create a sequence of <format> format, instead of a TIFF sequence.\n"
-	echo -e "	  --> 0: EXR, 1: TIFF." #Future: More formats!
+	echo -e "	-f[0:3]   IMG_FMT - Create a sequence of <format> format, instead of a TIFF sequence."
+	echo -e "	  --> 0: EXR (default), 1: TIFF, 2: PNG, 3: Cineon (DPX).\n" #Future: More formats?
 	
-	echo -e "	-c   COMPRESS - Specify to automatically compress the image sequence losslessly." ###
-	echo -e "	  --> Uses ZIP for TIFF (best for 16-bit), PIZ for EXR (best for grainy images)."
-	echo -e "	  --> EXR's piz compression tends to be faster better.\n"
+	echo -e "	-c   COMPRESS - Specify to automatically compress the image sequence."
+	echo -e "	  --> TIFF: ZIP (best for 16-bit), PIZ for EXR (best for grainy images), PNG: lvl 9 (zlib deflate), DPX: RLE."
+	echo -e "	  --> EXR's piz compression tends to be fastest + best.\n"
 	
 	echo -e "	-m   MOVIE - Specify to create a Prores4444 video.\n"
 		
 	echo -e "	-p[0:3]   PROXY - Specifies the proxy mode. 0 is default." 
-	echo -e "	  --> 0: No proxies. 1: H.264 proxy. 2: JPG proxy sequence. 3: Both.\n"
+	echo -e "	  --> 0: No proxies. 1: H.264 proxy. 2: JPG proxy sequence. 3: Both."
+	echo -e "	  --> Proxies won't be developed without the main output - ex. JPG proxies require -i.\n"
 	
 	echo -e "	-s[0%:100%]   PROXY_SCALE - the size, in %, of the proxy output."
 	echo -e "	  --> Use -s<percentage>% (no space). 50% is default.\n"
@@ -185,7 +188,7 @@ parseArgs() { #Holy garbage
 			let ARGNUM--
 		fi
 		if [ `echo ${ARG} | cut -c2-2` = "u" ]; then
-			DUAL_ISO="-f"
+			DUAL_ISO=true
 			let ARGNUM--
 		fi
 		if [ `echo ${ARG} | cut -c2-2` = "r" ]; then
@@ -198,6 +201,10 @@ parseArgs() { #Holy garbage
 				"0") IMG_FMT="exr"
 				;;
 				"1") IMG_FMT="tiff"
+				;;
+				"2") IMG_FMT="png"
+				;;
+				"3") IMG_FMT="dpx"
 				;;
 			esac
 			let ARGNUM--
@@ -257,6 +264,11 @@ parseArgs() { #Holy garbage
 		if [ `echo ${ARG} | cut -c2-2` = "n" ]; then
 			setting=`echo ${ARG} | cut -c3-${#ARG}`
 			NOISE_REDUC="-n ${setting}"
+			let ARGNUM--
+		fi
+		if [ `echo ${ARG} | cut -c2-2` = "T" ]; then
+			setting=`echo ${ARG} | cut -c3-${#ARG}`
+			THREADS=$setting
 			let ARGNUM--
 		fi
 		if [ `echo ${ARG} | cut -c2-2` = "h" ]; then
@@ -360,7 +372,10 @@ checkDeps() {
 		fi
 		
 		if [ ! -f $MLV_BP ]; then
-			echo -e "\e[0;31m\e[1m${RAW_DUMP} not found! Execution will continue without badpixel removal.\e[0m\n"
+			echo -e "\e[0;31m\e[1m${MLV_BP} not found! Execution will continue without badpixel removal.\e[0m\n"
+		fi
+		if [ ! -f $CR_HDR ]; then
+			echo -e "\e[0;31m\e[1m${CR_HDR} not found! Execution will continue without Dual ISO processing capability.\e[0m\n"
 		fi
 }
 
@@ -380,8 +395,8 @@ runSim() {
 	#~ echo $cmdOrig $cmd1 $cmd2
 	#~ echo $($cmdOrig)
 	
-	PIPE="${TMP}/pipe_$(date +%s%N | cut -b1-13)"
-	mkfifo $PIPE
+	PIPE="${TMP}/pipe_vid" # $(date +%s%N | cut -b1-13)"
+	mkfifo $PIPE 2>/dev/null
 	
 	cat $PIPE | $cmd1 & $cmdOrig | tee $PIPE | $cmd2 #The magic of simultaneous execution ^_^
 	#~ cat $PIPE | tr 'e' 'a' & echo 'hello' | tee $PIPE | tr 'e' 'o' #The magic of simultaneous execution ^_^
@@ -414,8 +429,12 @@ for ARG in $*; do
 			list="${list}, ${item}"
 		fi
 	done
-		
-	echo -e "\n\e[1m${ARGNUM} Files Left to Process:\e[0m ${list}\n"
+	
+	if [ $ARGNUM == 1 ]; then
+		echo -e "\n\e[1m${ARGNUM} File Left to Process:\e[0m ${list}\n"
+	else
+		echo -e "\n\e[1m${ARGNUM} Files Left to Process:\e[0m ${list}\n"
+	fi
 
 #PREPARATION
 
@@ -476,129 +495,69 @@ for ARG in $*; do
 	
 	
 #Dual ISO Conversion
-	if [ $DUAL_ISO ]; then
+	if [ $DUAL_ISO == true ]; then
 		echo -e "\e[1m${TRUNC_ARG}:\e[0m Combining Dual ISO...\n"
 		
+		#Original DNGs will be moved here.
 		oldFiles="${TMP}/orig_dng"
 		mkdirS $oldFiles
 		
-		PIPE="${TMP}/yeepipe"
-		mkfifo $PIPE
-		
-		export FRAMES
-		export CR_HDR
-		export TMP
-		export oldFiles
-		export lPath="${TMP}/devel.lock"
-		export iPath="${TMP}/iCount"
+		#Prepare for parallelism.
+		lPath="${TMP}/devel.lock"
+		iPath="${TMP}/iCount"
 		touch iPath
 		echo "" >> $iPath #Increment the count. 0 lines is uncountable
-		inc() { #Requires i.
-			$CR_HDR $1 --no-cs >/dev/null 2>/dev/null #The LQ option, --mean23, is completely unusable in my opinion.
+		
+		inc_iso() { #7 args: {} $CR_HDR $TMP $FRAMES $oldFiles $lPath $iPath. {} is a path. Progress is thread safe.
+			$2 $1 --no-cs >/dev/null 2>/dev/null #The LQ option, --mean23, is completely unusable in my opinion.
 			
 			name=$(basename "$1")
-			mv "$TMP/${name%.*}.dng" $oldFiles #Move away original dngs.
-			mv "${TMP}/${name%.*}.DNG" "${TMP}/${name%.*}.dng" #Rename *.DNG to *.dng.
+			mv "${3}/${name%.*}.dng" $5 #Move away original dngs.
+			mv "${3}/${name%.*}.DNG" "${3}/${name%.*}.dng" #Rename *.DNG to *.dng.
 			
-			while true; do
-				if mkdir $lPath 2>/dev/null; then #Lock mechanism.
-					count="$(wc -l < "${iPath}")" #Read the count.
-					echo -e "\e[2K\rDual ISO Development: Frame ${count}/${FRAMES}\c"
-					echo "" >> $iPath #Increment the count.
-					rm -rf $lPath
+			while true; do #This is the progress indicator. Don't use count to index the files; it won't correspond.
+				if mkdir $6 2>/dev/null; then #Lock mechanism. If dir is made, true. If not, sleep. Suppress errors.
+					count="$(wc -l < "${7}")" #Read the count from iPath.
+					echo -e "\e[2K\rDual ISO Development: Frame ${count}/${4}\c"
+					echo "" >> $7 #Increment the count by adding a line to iPath.
+					rm -rf $6
 					break
 				else
 					sleep 0.2
 				fi
 			done
 		}
-		export -f inc
-		find $TMP -name *.dng -print0 | sort -z > $PIPE & cat $PIPE | xargs -0 -I {} -P 8 -n 1 bash -c "inc {}"
+		
+		export -f inc_iso #Must expose function to subprocess.
+		
+		find $TMP -name *.dng -print0 | sort -z | xargs -0 -I {} -P $THREADS -n 1 bash -c "inc_iso {} $CR_HDR $TMP $FRAMES $oldFiles $lPath $iPath"
 		exit
-		#~ i=0
-		trap "rm -rf ${FILE}; exit 1" INT
-		for file in $TMP/*.dng; do
-			#~ $CR_HDR $file --no-cs >/dev/null 2>/dev/null #The LQ option, --mean23, is completely unusable in my opinion.
-			
-			name=$(basename "$file")
-			mv "$TMP/${name%.*}.dng" $oldFiles #Move away original dngs.
-			mv "${TMP}/${name%.*}.DNG" "${TMP}/${name%.*}.dng" #Rename *.DNG to *.dng.
-			
-			echo -e "\e[2K\rDual ISO Development: Frame $(echo "${i} + 1" | bc)/${FRAMES}\c"
-			let i++
-		done
+		rm $iPath
 		echo -e "\n"
-	
 	fi
-	
-#Create badpixels file.
-	#~ if [ $isBP != false ]; then
-		#~ echo -e "\e[1m${TRUNC_ARG}:\e[0m Generating badpixels file...\n"
-		
-		#~ bad_name="badpixels_${TRUNC_ARG}.txt"
-		
-		#~ #DFort's code
-		#~ raw_width=`xxd -s 0x54 -l 2 -p "$ARG"`
-		#~ raw_width="${raw_width:2:2}${raw_width:0:2}"
-		#~ raw_width=$((16#$raw_width))
-		#~ raw_height=`xxd -s 0x50 -l 2 -p "$ARG"`
-		#~ raw_height="${raw_height:2:2}${raw_height:0:2}"
-		#~ raw_height=$((16#$raw_height))
-		
-		#~ raw_buffer=$raw_width"x"$raw_height
-		
-		#~ video_mode=""
-		
-		#~ case $raw_buffer in
-			#~ 1808x1190)
-				#~ video_mode=mv1080
-				#~ ;;
-			#~ 1808x727)
-				#~ video_mode=mv720
-				#~ ;;
-			#~ 1872x1060)
-				#~ video_mode=mv1080crop
-				#~ ;;
-			#~ 2592x1108)
-				#~ video_mode=zoom
-				#~ ;;
-		#~ esac
-		#~ echo $video_mode
-		
-		#~ $MLV_BP -o "${TMP}/${bad_name}" -m $video_mode "${TMP}/${TRUNC_ARG}_000000.dng"
-		
-		#~ if [ ! -z $BADPIXEL_PATH ]; then
-			#~ if [ -f "${TMP}/${bad_name}" ]; then
-				#~ mv "${TMP}/${bad_name}" "${TMP}/bp_gen"
-				#~ cp $BADPIXEL_PATH "${TMP}/bp_imp"
-				
-				#~ { cat "${TMP}/bp_gen" && cat "${TMP}/bp_imp"; } > "${TMP}/${bad_name}" #Combine specified file with the generated file.
-			#~ else
-				#~ cp $BADPIXEL_PATH "${TMP}/${bad_name}"
-			#~ fi
-		#~ fi
-		
-		#~ BADPIXELS="-P ${TMP}/${bad_name}"
-	#~ fi
 
-#Get White Balance correction factor (or ignore it all).
-	echo -e "\e[1m${TRUNC_ARG}:\e[0m Generating WB...\n"
+#Get White Balance correction factor.
 	if [ $GEN_WHITE == true ]; then
+		echo -e "\e[1m${TRUNC_ARG}:\e[0m Generating WB...\n"
+		
+		#Calculate n, the distance between samples.
 		if [ $WHITE_SPD -gt $FRAMES ]; then
 			WHITE_SPD=$FRAMES
 		fi
 		n=`echo "${FRAMES} / ${WHITE_SPD}" | bc`
+		
 		toBal="${TMP}/toBal"
 		mkdirS $toBal
 		
+		#Devlelop every nth file for averaging.
 		i=0
 		t=0
 		trap "rm -rf ${FILE}; exit 1" INT
 		for file in $TMP/*.dng; do 
-			if [ `echo "(${i}+1) % ${n}" | bc` -eq 0 ]; then # || [ $i -eq 1 ]; then #Only develop every nth file - we're averaging, after all!
+			if [ `echo "(${i}+1) % ${n}" | bc` -eq 0 ]; then
 				dcraw -q 0 $BADPIXELS -r 1 1 1 1 -g $GAMMA -o 0 -T "${file}"
 				name=$(basename "$file")
-				mv "$TMP/${name%.*}.tiff" $toBal #TIFF MOVEMENT. We use TIFFs here because it's easy for dcraw and helps Python.
+				mv "$TMP/${name%.*}.tiff" $toBal #TIFF MOVEMENT. We use TIFFs here because it's easy for dcraw and Python.
 				let t++
 			fi
 			echo -e "\e[2K\rWB Development: Sample ${t}/$(echo "${FRAMES} / $n" | bc) (Frame: $(echo "${i} + 1" | bc)/${FRAMES})\c"
@@ -606,7 +565,7 @@ for ARG in $*; do
 		done
 		echo ""
 		
-		#Read result into a form dcraw likes.
+		#Calculate + store result into a form dcraw likes.
 		echo -e "Calculating Auto White Balance..."
 		BALANCE=`$BAL $toBal`
 		WHITE="-r ${BALANCE} 1.000000"
@@ -617,6 +576,7 @@ for ARG in $*; do
 		
 		trap "rm -rf ${FILE}; exit 1" INT
 		for file in $TMP/*.dng; do
+			#dcraw a single file verbosely, to get the camera multiplier with awk.
 			BALANCE=`dcraw -T -w -v -c ${file} 2>&1 | awk '/multipliers/ { print $2, $3, $4 }'`
 			break
 		done
@@ -635,25 +595,11 @@ for ARG in $*; do
 	fi
 	
 #DEFINE FUNCTIONS
-	
-	dcrawFile() {
-		dcraw -c -q $DEMO_MODE $FOUR_COLOR $BADPIXELS $WHITE -H $HIGHLIGHT_MODE -g $GAMMA $NOISE_REDUC -o 0 $DEPTH $file
-		#Requires some file outside the scope of the function. Pipes that file.
-	}
-	
+		
 	dcrawOpt() {
 		find "${TMP}" -maxdepth 1 -iname '*.dng' -print0 | sort -z | xargs -0 \
 			dcraw -c -q $DEMO_MODE $FOUR_COLOR $BADPIXELS $WHITE -H $HIGHLIGHT_MODE -g $GAMMA $NOISE_REDUC -o 0 $DEPTH
 	} #Is prepared to pipe all the files in TMP outwards.
-	
-	img_main() {
-		convert $DEPTH_OUT - $COMPRESS $(printf "${SEQ}/${TRUNC_ARG}_%06d.${IMG_FMT}" $i) #Make sure to do deep analysis later.
-		#Requires some variable i outside the scope of the function.
-	}
-	
-	img_prox() {
-		convert - -quality 90 -resize $PROXY_SCALE $(printf "${PROXY}/${TRUNC_ARG}_%06d.jpg" $i)
-	} #-quiet
 	
 	mov_main() {
 		ffmpeg -f image2pipe -vcodec ppm -r $FPS -i pipe:0 \
@@ -665,6 +611,25 @@ for ARG in $*; do
 			-loglevel panic -stats $SOUND -c:v libx264 -n -r $FPS -preset fast -vf "scale=trunc(iw/2)*${SCALE}:trunc(ih/2)*${SCALE}" -crf 23 $LUT -c:a mp3 "${VID}_lq.mp4"
 	} #The option -vf "scale=trunc(iw/2)*2:trunc(ih/2)*2" fixes when x264 is unhappy about non-2 divisible dimensions.
 	
+	img_par() { #Takes 17 arguments: {} $DEMO_MODE $FOUR_COLOR $BADPIXELS $WHITE $HIGHLIGHT_MODE $GAMMA $NOISE_REDUC $DEPTH $SEQ $TRUNC_ARG $IMG_FMT $FRAMES $DEPTH_OUT $COMPRESS $isJPG $PROXY_SCALE $PROXY
+		count=$(echo $(echo $1 | rev | cut -d "_" -f 1 | rev | cut -d "." -f 1 | grep "[0-9]") | bc) #Instead of count from file, count from name!
+		if [ ${16} == true ]; then
+			dcraw -c -q $2 $3 $4 $5 -H $6 -g $7 $8 -o 0 $9 $1 | \
+				tee >(convert ${14} - ${15} $(printf "${10}/${11}_%06d.${12}" ${count})) | \
+					convert - -quality 90 -resize ${17} $(printf "${18}/${11}_%06d.jpg" ${count})
+			echo -e "\e[2K\rDNG to ${12^^}/JPG: Frame ${count^^}/${13}\c"
+		else
+			dcraw -c -q $2 $3 $4 $5 -H $6 -g $7 $8 -o 0 $9 $1 | \
+				convert ${14} - ${15} $(printf "${10}/${11}_%06d.${12}" ${count})
+			echo -e "\e[2K\rDNG to ${12^^}: Frame ${count^^}/${13}\c"
+		fi
+	}
+	
+	export -f img_par
+	
+	findPar() {
+		find "${TMP}" -maxdepth 1 -name '*.dng' -print0 | sort -z
+	}
 	
 	SEQ="${FILE}/${IMG_FMT}_${TRUNC_ARG}"
 	PROXY="${FILE}/proxy_${TRUNC_ARG}"
@@ -679,27 +644,32 @@ for ARG in $*; do
 		if [ $isJPG == true ]; then
 			mkdirS $PROXY
 		fi
-#Convert all the actual DNGs to SEQ.
+		
+#Define compression based on IMG_FMT
 		if [ $isCOMPRESS == true ]; then
 			if [ $IMG_FMT == "exr" ]; then
 				COMPRESS="-compress piz"
 			elif [ $IMG_FMT == "tiff" ]; then
 				COMPRESS="-compress zip"
-			fi #For now, compression modes are hardcoded.
+			elif [ $IMG_FMT == "png" ]; then
+				COMPRESS="-quality 9"
+			elif [ $IMG_FMT == "dpx" ]; then
+				COMPRESS="-compress rle"
+			fi #Compression modes are hardcoded.
+		fi
+
+#Convert all the actual DNGs to IMG_FMT, in parallel.
+		findPar | xargs -0 -I {} -P $THREADS -n 1 \
+			bash -c "img_par {} '$DEMO_MODE' '$FOUR_COLOR' '$BADPIXELS' '$WHITE' '$HIGHLIGHT_MODE' '$GAMMA' '$NOISE_REDUC' '$DEPTH' \
+						'$SEQ' '$TRUNC_ARG' '$IMG_FMT' '$FRAMES' '$DEPTH_OUT' '$COMPRESS' '$isJPG' '$PROXY_SCALE' '$PROXY' \
+					"
+		
+		if [ $isJPG == true ]; then #Make it print "Frame $FRAMES / $FRAMES" as the last output :).
+			echo -e "\e[2K\rDNG to ${IMG_FMT^^}/JPG: Frame ${FRAMES}/${FRAMES}\c"
+		else
+			echo -e "\e[2K\rDNG to ${IMG_FMT^^}: Frame ${FRAMES}/${FRAMES}\c"
 		fi
 		
-		i=0 #Very important variable. See functions called.
-		trap "rm -rf ${FILE}; exit 1" INT
-		for file in $TMP/*.dng; do
-			if [ $isJPG == true ]; then
-				runSim dcrawFile img_main img_prox
-				echo -e "\e[2K\rDNG to ${IMG_FMT^^}/JPG (dcraw): Frame $(echo "${i} + 1" | bc)/${FRAMES}.\c"
-			else
-				dcrawFile $file | img_main
-				echo -e "\e[2K\rDNG to ${IMG_FMT^^} (dcraw): Frame $(echo "${i} + 1" | bc)/${FRAMES}.\c"
-			fi
-			let i++
-		done
 		echo -e "\n"
 		
 #Potentially apply a LUT.
@@ -719,21 +689,6 @@ for ARG in $*; do
 			fi
 			#~ exit
 		fi
-	else
-		if [ $isJPG == true ]; then
-			mkdirS $PROXY
-		fi
-		
-		i=0 #Very important variable. See functions called.
-		trap "rm -rf ${FILE}; exit 1" INT
-		for file in $TMP/*.dng; do
-			if [ $isJPG == true ]; then
-				dcrawFile $file | img_prox
-				echo -e "\e[2K\rDNG to JPG (dcraw): Frame $(echo "${i} + 1" | bc)/${FRAMES}.\c"
-			fi
-			let i++
-		done
-		echo -e "\n"
 	fi
 	
 #MOVIE PROCESSING
@@ -747,9 +702,8 @@ for ARG in $*; do
 		SOUND_ACTION=""
 	fi
 	
-	if [ $MOVIE = true ]; then
+	if [ $MOVIE == true ] && [ $IMAGES == false ]; then
 		#LUT is automatically applied if argument was passed.
-		
 		if [ $isH264 == true ]; then
 			echo -e "\e[1m${TRUNC_ARG}:\e[0m Encoding to ProRes/H.264..."
 			runSim dcrawOpt mov_main mov_prox
@@ -757,10 +711,13 @@ for ARG in $*; do
 			echo -e "\e[1m${TRUNC_ARG}:\e[0m Encoding to ProRes..."
 			dcrawOpt | mov_main
 		fi
-	else
+	elif [ $MOVIE == true ] && [ $IMAGES == true ]; then
 		if [ $isH264 == true ]; then
-			echo -e "\e[1m${TRUNC_ARG}:\e[0m Encoding to H264..."
-			dcrawOpt | mov_prox
+			echo -e "\e[1m${TRUNC_ARG}:\e[0m Encoding to ProRes/H.264..."
+			runSim dcrawOpt mov_main mov_prox
+		else
+			echo -e "\e[1m${TRUNC_ARG}:\e[0m Encoding to ProRes..."
+			dcrawOpt | mov_main
 		fi
 	fi
 	
@@ -794,6 +751,42 @@ test() {
 		end=`echo "($(date +%s%N | cut -b1-13) / 1000 ) - ${first}" | bc -l`
 		echo $end
 	} #Just a test :).
-
+	
+	#Old Image Development
+		i=0 #Very important variable. See functions called.
+		trap "rm -rf ${FILE}; exit 1" INT
+		for file in $TMP/*.dng; do
+			if [ $isJPG == true ]; then
+				runSim dcrawFile img_main img_prox
+				echo -e "\e[2K\rDNG to ${IMG_FMT^^}/JPG (dcraw): Frame $(echo "${i} + 1" | bc)/${FRAMES}.\c"
+			else
+				dcrawFile $file | img_main
+				echo -e "\e[2K\rDNG to ${IMG_FMT^^} (dcraw): Frame $(echo "${i} + 1" | bc)/${FRAMES}.\c"
+			fi
+			let i++
+		done
+	
+	img_main() {
+		convert $DEPTH_OUT - $COMPRESS $(printf "${SEQ}/${TRUNC_ARG}_%06d.${IMG_FMT}" $i) #Make sure to do deep analysis later.
+		#Requires some variable i outside the scope of the function.
+	}
+	
+	img_prox() {
+		convert - -quality 90 -resize $PROXY_SCALE $(printf "${PROXY}/${TRUNC_ARG}_%06d.jpg" $i)
+	} #-quiet
+	
+	dcrawFile() {
+		dcraw -c -q $DEMO_MODE $FOUR_COLOR $BADPIXELS $WHITE -H $HIGHLIGHT_MODE -g $GAMMA $NOISE_REDUC -o 0 $DEPTH $file
+		#Requires some file outside the scope of the function. Pipes that file.
+	}
+	
+	#Prepare for parallelism.
+		lPath="${TMP}/devel.lock"
+		iPath="${TMP}/iCount"
+		touch $iPath
+		echo "" >> $iPath #Increment the count. 0 lines is uncountable.
+		
+	#Use mkdir $lPath in an if as a lock.
+	
 	cat $PIPE | vidLQ & echo "text" | tee $PIPE | vidHQ # Old method. Surprised it worked...
 }

@@ -12,10 +12,10 @@ Usage:
 	./convmlv.sh [OPTIONS] mlv_files
 
 INFO:
-	A script allowing you to convert .MLV or .RAW files into TIFF + JPG (proxy) sequences and/or a Prores 4444 .mov,
+	A script allowing you to convert .MLV or .RAW files into TIFF/EXR + JPG (proxy) sequences and/or a Prores 4444 .mov,
 	with an optional H.264 .mp4 preview. Many useful options are exposed.
 
-DEPENDENCIES: *If you don't use a feature, you don't need the dependency!
+DEPENDENCIES: *If you don't use a feature, you don't need the dependency. Don't use a feature without the dependency.
 	-mlv_dump: For DNG extraction from MLV. http://www.magiclantern.fm/forum/index.php?topic=7122.0
 	-raw2dng: For DNG extraction from RAW. http://www.magiclantern.fm/forum/index.php?topic=5404.0
 	-mlv2badpixels.sh: For bad pixel removal. https://bitbucket.org/daniel_fort/ml-focus-pixels/src
@@ -25,7 +25,7 @@ DEPENDENCIES: *If you don't use a feature, you don't need the dependency!
 	-Python 3 + libs: Used for auto white balance.
 	-exiftool + xxd: Used in mlv2badpixels.sh.
 
-VERSION: 1.5.2
+VERSION: 1.7.0
 
 OPTIONS, BASIC:
 	-v   version - Print out version string.
@@ -34,15 +34,24 @@ OPTIONS, BASIC:
 	-R<path>   RAW_DUMP - The path to raw2dng (no space btwn -M and path). Default is './raw2dng'.
 	-y<path>   PYTHON - The path or command used to invoke Python. Defaults to python3.
 	-B<path>   MLV_BP - The path to mlv2badpixels.sh (by dfort). Default is './mlv2badpixels.sh'.
+	-T[int]    Max process threads, for multithreaded parts of the program. Defaults to 8.
 
 
 OPTIONS, OUTPUT:
-	-i   IMAGE - Specify to create a TIFF sequence.
+	-i   IMAGE - Specify to create an image sequence (EXR by default).
+
+	-f[0:3]   IMG_FMT - Create a sequence of <format> format, instead of a TIFF sequence.
+	  --> 0: EXR (default), 1: TIFF, 2: PNG, 3: Cineon (DPX).
+
+	-c   COMPRESS - Specify to automatically compress the image sequence.
+	  --> TIFF: ZIP (best for 16-bit), PIZ for EXR (best for grainy images), PNG: lvl 9 (zlib deflate), DPX: RLE.
+	  --> EXR's piz compression tends to be fastest + best.
 
 	-m   MOVIE - Specify to create a Prores4444 video.
 
-	-p[0:3]   PROXY - Specifies the proxy mode.
+	-p[0:3]   PROXY - Specifies the proxy mode. 0 is default.
 	  --> 0: No proxies. 1: H.264 proxy. 2: JPG proxy sequence. 3: Both.
+	  --> Proxies won't be developed without the main output - ex. JPG proxies require -i.
 
 	-s[0%:100%]   PROXY_SCALE - the size, in %, of the proxy output.
 	  --> Use -s<percentage>% (no space). 50% is default.
@@ -52,10 +61,12 @@ OPTIONS, OUTPUT:
 
 
 OPTIONS, RAW DEVELOPMENT:
+	-u    DUAL_ISO - Process file as dual ISO.
+
 	-d[0:3]   DEMO_MODE - DCraw demosaicing mode. Higher modes are slower. 1 is default.
 	  --> Use -d<mode> (no space). 0: Bilinear. 1: VNG (default). 2: PPG. 3: AHD.
 
-	-f   FOUR_COLOR - Interpolate RGB as four colors. Can often fix weirdness with demosaicing.
+	-r   FOUR_COLOR - Interpolate as four colors. Can often fix weirdness with VNG/AHD.
 
 	-H[0:9]   HIGHLIGHT_MODE - 2 looks the best, without major modifications. 0 is also a safe bet.
 	  --> Use -H<number> (no space). 0 clips. 1 allows colored highlights. 2 adjusts highlights to grey.
@@ -82,12 +93,13 @@ OPTIONS, COLOR:
 	  --> Use -w<mode> (no space).
 	  --> 0: Auto WB (Requires Python Deps). 1: Camera WB. 2: No Change.
 
-	-A[int]   WHITE_SPD - This is the speed of the auto white balance, causing quality loss. Defaults to 15.
-	  --> For AWB, the script averages the entire sequence, skipping n frames each time. This value is n.
+	-A[int]   WHITE_SPD - This is the amount of samples from which AWB will be calculated.
+	  -->About this many frames, averaged over the course of the sequence, will be used to do AWB.
 
 	-l<path>   LUT - This is a path to the 3D LUT. Specify the path to the LUT to use it.
 	  --> Compatibility determined by ffmpeg (.cube is supported).
-	  --> Path to LUT (no space between -l and path). Without specifying -l, no LUT will be applied.
+	  --> LUT cannot be applied to EXR sequences.
+	  --> Path to LUT (no space between -l and path).
 
 
 OPTIONS, DEPENDENCIES:

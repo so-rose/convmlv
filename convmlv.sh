@@ -9,6 +9,7 @@ PYTHON="python3"
 #NON-STANDARD FILE LOCATIONS
 MLV_DUMP="./mlv_dump" #Path to mlv_dump location.
 RAW_DUMP="./raw2dng" #Path to raw2dng location.
+CR_HDR="./cr2hdr" #Path to cr2hdr location.
 MLV_BP="./mlv2badpixels.sh"
 PYTHON_BAL="./balance.py"
 
@@ -27,6 +28,9 @@ isJPG=false
 isH264=false
 KEEP_DNGS=false
 FOUR_COLOR=""
+
+#ISO
+DUAL_ISO=false
 
 #DCraw
 HIGHLIGHT_MODE="0"
@@ -100,10 +104,12 @@ help () { #This is a little too much @ this point...
 	echo -e "	  --> Besides testing, this makes the script a glorified mlv_dump...\n\n"
 	
 	echo -e "OPTIONS, RAW DEVELOPMENT:"
+	echo -e "	-u    DUAL_ISO - Process file as dual ISO.\n"
+	
 	echo -e "	-d[0:3]   DEMO_MODE - DCraw demosaicing mode. Higher modes are slower. 1 is default."
 	echo -e "	  --> Use -d<mode> (no space). 0: Bilinear. 1: VNG (default). 2: PPG. 3: AHD.\n"
 	
-	echo -e "	-u   FOUR_COLOR - Interpolate as four colors. Can often fix weirdness with VNG/AHD.\n"
+	echo -e "	-r   FOUR_COLOR - Interpolate as four colors. Can often fix weirdness with VNG/AHD.\n"
 	
 	echo -e "	-H[0:9]   HIGHLIGHT_MODE - 2 looks the best, without major modifications. 0 is also a safe bet."
 	echo -e "	  --> Use -H<number> (no space). 0 clips. 1 allows colored highlights. 2 adjusts highlights to grey."
@@ -179,6 +185,10 @@ parseArgs() { #Holy garbage
 			let ARGNUM--
 		fi
 		if [ `echo ${ARG} | cut -c2-2` = "u" ]; then
+			DUAL_ISO="-f"
+			let ARGNUM--
+		fi
+		if [ `echo ${ARG} | cut -c2-2` = "r" ]; then
 			FOUR_COLOR="-f"
 			let ARGNUM--
 		fi
@@ -426,7 +436,7 @@ for ARG in $*; do
 	mkdirS $FILE
 	mkdirS $TMP
 	
-#Create badpixels file.
+#Create badpixels file, IF dual_iso isn't active.
 	if [ $isBP == true ]; then
 		echo -e "\e[1m${TRUNC_ARG}:\e[0m Generating badpixels file...\n"
 		
@@ -464,6 +474,113 @@ for ARG in $*; do
 		
 	FRAMES=$(find ${TMP} -name "*.dng" | wc -l)
 	
+	
+#Dual ISO Conversion
+	if [ $DUAL_ISO ]; then
+		echo -e "\e[1m${TRUNC_ARG}:\e[0m Combining Dual ISO...\n"
+		
+		oldFiles="${TMP}/orig_dng"
+		mkdirS $oldFiles
+		
+		PIPE="${TMP}/yeepipe"
+		mkfifo $PIPE
+		
+		export FRAMES
+		export CR_HDR
+		export TMP
+		export oldFiles
+		export lPath="${TMP}/devel.lock"
+		export iPath="${TMP}/iCount"
+		touch iPath
+		echo "" >> $iPath #Increment the count. 0 lines is uncountable
+		inc() { #Requires i.
+			$CR_HDR $1 --no-cs >/dev/null 2>/dev/null #The LQ option, --mean23, is completely unusable in my opinion.
+			
+			name=$(basename "$1")
+			mv "$TMP/${name%.*}.dng" $oldFiles #Move away original dngs.
+			mv "${TMP}/${name%.*}.DNG" "${TMP}/${name%.*}.dng" #Rename *.DNG to *.dng.
+			
+			while true; do
+				if mkdir $lPath 2>/dev/null; then #Lock mechanism.
+					count="$(wc -l < "${iPath}")" #Read the count.
+					echo -e "\e[2K\rDual ISO Development: Frame ${count}/${FRAMES}\c"
+					echo "" >> $iPath #Increment the count.
+					rm -rf $lPath
+					break
+				else
+					sleep 0.2
+				fi
+			done
+		}
+		export -f inc
+		find $TMP -name *.dng -print0 | sort -z > $PIPE & cat $PIPE | xargs -0 -I {} -P 8 -n 1 bash -c "inc {}"
+		exit
+		#~ i=0
+		trap "rm -rf ${FILE}; exit 1" INT
+		for file in $TMP/*.dng; do
+			#~ $CR_HDR $file --no-cs >/dev/null 2>/dev/null #The LQ option, --mean23, is completely unusable in my opinion.
+			
+			name=$(basename "$file")
+			mv "$TMP/${name%.*}.dng" $oldFiles #Move away original dngs.
+			mv "${TMP}/${name%.*}.DNG" "${TMP}/${name%.*}.dng" #Rename *.DNG to *.dng.
+			
+			echo -e "\e[2K\rDual ISO Development: Frame $(echo "${i} + 1" | bc)/${FRAMES}\c"
+			let i++
+		done
+		echo -e "\n"
+	
+	fi
+	
+#Create badpixels file.
+	#~ if [ $isBP != false ]; then
+		#~ echo -e "\e[1m${TRUNC_ARG}:\e[0m Generating badpixels file...\n"
+		
+		#~ bad_name="badpixels_${TRUNC_ARG}.txt"
+		
+		#~ #DFort's code
+		#~ raw_width=`xxd -s 0x54 -l 2 -p "$ARG"`
+		#~ raw_width="${raw_width:2:2}${raw_width:0:2}"
+		#~ raw_width=$((16#$raw_width))
+		#~ raw_height=`xxd -s 0x50 -l 2 -p "$ARG"`
+		#~ raw_height="${raw_height:2:2}${raw_height:0:2}"
+		#~ raw_height=$((16#$raw_height))
+		
+		#~ raw_buffer=$raw_width"x"$raw_height
+		
+		#~ video_mode=""
+		
+		#~ case $raw_buffer in
+			#~ 1808x1190)
+				#~ video_mode=mv1080
+				#~ ;;
+			#~ 1808x727)
+				#~ video_mode=mv720
+				#~ ;;
+			#~ 1872x1060)
+				#~ video_mode=mv1080crop
+				#~ ;;
+			#~ 2592x1108)
+				#~ video_mode=zoom
+				#~ ;;
+		#~ esac
+		#~ echo $video_mode
+		
+		#~ $MLV_BP -o "${TMP}/${bad_name}" -m $video_mode "${TMP}/${TRUNC_ARG}_000000.dng"
+		
+		#~ if [ ! -z $BADPIXEL_PATH ]; then
+			#~ if [ -f "${TMP}/${bad_name}" ]; then
+				#~ mv "${TMP}/${bad_name}" "${TMP}/bp_gen"
+				#~ cp $BADPIXEL_PATH "${TMP}/bp_imp"
+				
+				#~ { cat "${TMP}/bp_gen" && cat "${TMP}/bp_imp"; } > "${TMP}/${bad_name}" #Combine specified file with the generated file.
+			#~ else
+				#~ cp $BADPIXEL_PATH "${TMP}/${bad_name}"
+			#~ fi
+		#~ fi
+		
+		#~ BADPIXELS="-P ${TMP}/${bad_name}"
+	#~ fi
+
 #Get White Balance correction factor (or ignore it all).
 	echo -e "\e[1m${TRUNC_ARG}:\e[0m Generating WB...\n"
 	if [ $GEN_WHITE == true ]; then
@@ -654,10 +771,12 @@ for ARG in $*; do
 		DNG="${FILE}/dng_${TRUNC_ARG}"
 		mkdirS $DNG
 		
-		trap "rm -rf ${DNG}; exit 1" INT
-		for dng in $TMP/*.dng; do
-			mv $dng $DNG
-		done
+		if [ $DUAL_ISO ]; then
+			oldFiles="${TMP}/orig_dng"
+			find $oldFiles -name "*.dng" | xargs -I '{}' mv {} $DNG #Preserve the original, unprocessed DNGs.
+		else
+			find $TMP -name "*.dng" | xargs -I '{}' mv {} $DNG
+		fi
 	fi
 	
 #Delete tmp

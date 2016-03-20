@@ -531,7 +531,6 @@ for ARG in $*; do
 		export -f inc_iso #Must expose function to subprocess.
 		
 		find $TMP -name *.dng -print0 | sort -z | xargs -0 -I {} -P $THREADS -n 1 bash -c "inc_iso {} $CR_HDR $TMP $FRAMES $oldFiles $lPath $iPath"
-		exit
 		rm $iPath
 		echo -e "\n"
 	fi

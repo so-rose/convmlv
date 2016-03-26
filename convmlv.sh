@@ -26,7 +26,7 @@
 #BASIC CONSTANTS
 DEPS="imagemagick dcraw ffmpeg python3 pip3 exiftool xxd" #Dependency package names (Debian). List with -K option.
 PIP_DEPS="numpy Pillow tifffile" #Technically, you don't need Pillow. I'm not really sure :).
-VERSION="1.7.0" #Version string.
+VERSION="1.7.1" #Version string.
 PYTHON="python3"
 THREADS=8
 

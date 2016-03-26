@@ -25,7 +25,7 @@ DEPENDENCIES: *If you don't use a feature, you don't need the dependency. Don't 
 	-Python 3 + libs: Used for auto white balance.
 	-exiftool + xxd: Used in mlv2badpixels.sh.
 
-VERSION: 1.7.0
+VERSION: 1.7.1
 
 OPTIONS, BASIC:
 	-v   version - Print out version string.

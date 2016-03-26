@@ -162,9 +162,10 @@ help () { #This is a little too much @ this point...
 	echo -e "	  --> Use -w<mode> (no space)."
 	echo -e "	  --> 0: Auto WB (Requires Python Deps). 1: Camera WB. 2: No Change.\n"
 	
-	echo -e "	-F<path>   DARKFRAME - This is the path to the dark frame MLV."
+	echo -e "	-F<path>   DARKFRAME - This is the path to the dark frame MLV, for noise reduction."
 	echo -e "	  --> This is a noise reduction technique: Record 5 sec w/lens cap on & same settings as footage."
-	echo -e "	  --> Pass in that MLV file (must be MLV) as <path> to get noise reduction on all passed MLV files.\n"
+	echo -e "	  --> Pass in that MLV file (not .RAW) as <path> to get noise reduction on all passed MLV files."
+	echo -e "	  --> If the file extension is '.darkframe', the file will be used as the preaveraged dark frame.\n"
 	
 	echo -e "	-A[int]   WHITE_SPD - This is the amount of samples from which AWB will be calculated."
 	echo -e "	  -->About this many frames, averaged over the course of the sequence, will be used to do AWB.\n"
@@ -505,7 +506,7 @@ for ARG in $*; do
 			$MLV_BP -o $gen_bad $ARG
 		fi
 		
-		#~ if [ $DUAL_ISO == true ]; then #Brute force grid in everything. Experiment.
+		#~ if [ $DUAL_ISO == true ]; then #Brute force grid in everything. Experiment gone wrong...
 			#~ echo "" > $gen_bad
 			#~ echo $gen_bad
 			#~ mapfile < $gen_bad
@@ -551,11 +552,18 @@ for ARG in $*; do
 	if [ $DARKFRAME != "" ]; then
 		echo -e "\e[1m${TRUNC_ARG}:\e[0m Creating darkframe for subtraction...\n"
 		
-		avgFrame="${TMP}/darkframe.MLV"
-		newArg="${TMP}/subtracted.MLV"
+		avgFrame="${TMP}/avg.darkframe" #The path to the averaged darkframe file.
 		
-		$MLV_DUMP -o "${avgFrame}" -a $DARKFRAME >/dev/null 2>/dev/null
-		$MLV_DUMP -o $newArg -s $avgFrame $ARG >/dev/null 2>/dev/null
+		darkBase="$(basename "$ARG")"
+		darkExt="${BASE##*.}"
+		
+		if [ darkExt != 'darkframe' ]; then
+			$MLV_DUMP -o "${avgFrame}" -a $DARKFRAME >/dev/null 2>/dev/null
+		else
+			cp $DARKFRAME $avgFrame #Copy the preaveraged frame if the extension is .darkframe.
+		fi
+		
+		DARK_PROC="-s ${avgFrame}"
 	fi
 	
 #Dump to DNG sequence, perhaps subtracting darkframe.
@@ -567,20 +575,18 @@ for ARG in $*; do
 	else
 		echo -e "\e[1m${TRUNC_ARG}:\e[0m Dumping to DNG Sequence...\n"
 				
-		if [ $DARKFRAME != "" ]; then #Whether or not to use the newArg subtracted MLV.
-			inputFile=$newArg
+		if [ $DARKFRAME != "" ]; then #Just to let the user know that darkframe subtraction is impossible with RAW.
 			rawStat="*Skipping Darkframe subtraction for RAW file ${TRUNC_ARG}."
 		else
-			inputFile=$ARG
 			rawStat="\c"
 		fi
 		
 		if [ $EXT == "MLV" ] || [ $EXT == "mlv" ]; then
-			FPS=`${MLV_DUMP} -v -m ${inputFile} | grep FPS | awk 'FNR == 1 {print $3}'`
-			$MLV_DUMP $inputFile -o "${TMP}/${TRUNC_ARG}_" --dng --no-cs >/dev/null 2>/dev/null
+			FPS=`${MLV_DUMP} -v -m ${ARG} | grep FPS | awk 'FNR == 1 {print $3}'`
+			$MLV_DUMP $ARG $DARK_PROC -o "${TMP}/${TRUNC_ARG}_" --dng --no-cs >/dev/null 2>/dev/null
 		elif [ $EXT == "RAW" ] || [ $EXT == "raw" ]; then
 			echo -e $rawStat
-			FPS=`$RAW_DUMP $inputFile "${TMP}/${TRUNC_ARG}_" | awk '/FPS/ { print $3; }'` #Run the dump while awking for the FPS.
+			FPS=`$RAW_DUMP $ARG "${TMP}/${TRUNC_ARG}_" | awk '/FPS/ { print $3; }'` #Run the dump while awking for the FPS.
 		fi
 			
 		FRAMES=$(find ${TMP} -name "*.dng" | wc -l)

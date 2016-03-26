@@ -12,8 +12,8 @@ Usage:
 	./convmlv.sh [OPTIONS] mlv_files
 
 INFO:
-	A script allowing you to convert .MLV or .RAW files into TIFF/EXR + JPG (proxy) sequences and/or a Prores 4444 .mov,
-	with an optional H.264 .mp4 preview. Many useful options are exposed.
+	A script allowing you to convert .MLV, .RAW, or a folder with a DNG sequence into a sequence/movie
+	with optional proxies. Many useful options are exposed, including formats (EXR by default).
 
 DEPENDENCIES: *If you don't use a feature, you don't need the dependency. Don't use a feature without the dependency.
 	-mlv_dump: For DNG extraction from MLV. http://www.magiclantern.fm/forum/index.php?topic=7122.0
@@ -92,6 +92,10 @@ OPTIONS, COLOR:
 	-w[0:3]   WHITE - This is a modal white balance setting. Defaults to 0. 1 doesn't always work very well.
 	  --> Use -w<mode> (no space).
 	  --> 0: Auto WB (Requires Python Deps). 1: Camera WB. 2: No Change.
+
+	-F<path>   DARKFRAME - This is the path to the dark frame MLV.
+	  --> This is a noise reduction technique: Record 5 sec w/lens cap on & same settings as footage.
+	  --> Pass in that MLV file (must be MLV) as <path> to get noise reduction on all passed MLV files.
 
 	-A[int]   WHITE_SPD - This is the amount of samples from which AWB will be calculated.
 	  -->About this many frames, averaged over the course of the sequence, will be used to do AWB.

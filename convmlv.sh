@@ -36,6 +36,7 @@ RAW_DUMP="./raw2dng" #Path to raw2dng location.
 CR_HDR="./cr2hdr" #Path to cr2hdr location.
 MLV_BP="./mlv2badpixels.sh"
 PYTHON_BAL="./balance.py"
+DARKFRAME=""
 
 BAL="${PYTHON} ${PYTHON_BAL}"
 
@@ -51,7 +52,6 @@ isCOMPRESS=false
 isJPG=false
 isH264=false
 KEEP_DNGS=false
-FOUR_COLOR=""
 
 #ISO
 DUAL_ISO=false
@@ -67,6 +67,7 @@ NOISE_REDUC=""
 BADPIXELS=""
 BADPIXEL_PATH=""
 isBP=false
+FOUR_COLOR=""
 
 #White Balance
 WHITE=""
@@ -82,8 +83,8 @@ isLUT=false
 help () { #This is a little too much @ this point...
 	echo -e "Usage:\n	\033[1m./convmlv.sh\033[0m [OPTIONS] \033[2mmlv_files\033[0m\n"
 			
-	echo -e "INFO:\n	A script allowing you to convert .MLV or .RAW files into TIFF/EXR + JPG (proxy) sequences and/or a Prores 4444 .mov,
-	with an optional H.264 .mp4 preview. Many useful options are exposed.\n"
+	echo -e "INFO:\n	A script allowing you to convert .MLV, .RAW, or a folder with a DNG sequence into a sequence/movie
+	with optional proxies. Many useful options are exposed, including formats (EXR by default).\n"
 
 	echo -e "DEPENDENCIES: *If you don't use a feature, you don't need the dependency. Don't use a feature without the dependency."
 	echo -e "	-mlv_dump: For DNG extraction from MLV. http://www.magiclantern.fm/forum/index.php?topic=7122.0"
@@ -161,6 +162,10 @@ help () { #This is a little too much @ this point...
 	echo -e "	  --> Use -w<mode> (no space)."
 	echo -e "	  --> 0: Auto WB (Requires Python Deps). 1: Camera WB. 2: No Change.\n"
 	
+	echo -e "	-F<path>   DARKFRAME - This is the path to the dark frame MLV."
+	echo -e "	  --> This is a noise reduction technique: Record 5 sec w/lens cap on & same settings as footage."
+	echo -e "	  --> Pass in that MLV file (must be MLV) as <path> to get noise reduction on all passed MLV files.\n"
+	
 	echo -e "	-A[int]   WHITE_SPD - This is the amount of samples from which AWB will be calculated."
 	echo -e "	  -->About this many frames, averaged over the course of the sequence, will be used to do AWB.\n"
 	
@@ -212,6 +217,10 @@ parseArgs() { #Holy garbage
 		fi
 		if [ `echo ${ARG} | cut -c2-2` = "u" ]; then
 			DUAL_ISO=true
+			let ARGNUM--
+		fi
+		if [ `echo ${ARG} | cut -c2-2` = "F" ]; then
+			DARKFRAME=`echo ${ARG} | cut -c3-${#ARG}`
 			let ARGNUM--
 		fi
 		if [ `echo ${ARG} | cut -c2-2` = "r" ]; then
@@ -377,8 +386,13 @@ parseArgs() { #Holy garbage
 }
 
 checkDeps() {
-		if [ ! -f $ARG ]; then
+		if [ ! -f $ARG ] && [ ! -d $ARG ]; then
 			echo -e "\e[0;31m\e[1mFile ${ARG} not found!\e[0m\n"
+			exit 1
+		fi
+		
+		if [ ! -f $DARKFRAME ] && [ $DARKFRAME != "" ]; then
+			echo -e "\e[0;31m\e[1mDarkframe MLV ${DARKFRAME} not found!\e[0m\n"
 			exit 1
 		fi
 		
@@ -483,12 +497,41 @@ for ARG in $*; do
 		echo -e "\e[1m${TRUNC_ARG}:\e[0m Generating badpixels file...\n"
 		
 		bad_name="badpixels_${TRUNC_ARG}.txt"
+		gen_bad="${TMP}/${bad_name}"
 		
 		if [ $EXT == "MLV" ] || [ $EXT == "mlv" ]; then
-			$MLV_BP -o "${TMP}/${bad_name}" $ARG
+			$MLV_BP -o $gen_bad $ARG
 		elif [ $EXT == "RAW" ] || [ $EXT == "raw" ]; then
-			$MLV_BP -o "${TMP}/${bad_name}" $ARG
+			$MLV_BP -o $gen_bad $ARG
 		fi
+		
+		#~ if [ $DUAL_ISO == true ]; then #Brute force grid in everything. Experiment.
+			#~ echo "" > $gen_bad
+			#~ echo $gen_bad
+			#~ mapfile < $gen_bad
+			#~ mFile=$(echo "${MAPFILE[@]}")
+			#~ echo $file
+			#~ exit
+			#~ for line in $mFile; do
+				#~ if ($(echo "${line}" | cut -c1-1) == "#"); then
+					#~ continue
+				#~ fi
+				#~ xyd=(`echo ${line}`);
+				#~ echo $line
+				#~ echo hi
+				#~ exit
+				#~ 
+				#~ #3x3 badpixel fill in.
+				#~ for x in {-1..1}; do
+					#~ for y in {-2..2}; do
+						#~ if [ x == 0 ] || [ y == 0 ]; then
+							#~ continue
+						#~ fi
+						#~ echo "$(echo "${xyd[0]} + $x" | bc) $(echo "${xyd[1]} + $y" | bc) 0" > $gen_bad
+					#~ done
+				#~ done
+			#~ done
+		#~ fi
 		
 		if [ ! -z $BADPIXEL_PATH ]; then
 			if [ -f "${TMP}/${bad_name}" ]; then
@@ -501,20 +544,47 @@ for ARG in $*; do
 			fi
 		fi
 		
-		BADPIXELS="-P ${TMP}/${bad_name}"
+		BADPIXELS="-P ${gen_bad}"
 	fi
 	
-#Dump to DNG sequence
-	echo -e "\e[1m${TRUNC_ARG}:\e[0m Dumping to DNG Sequence...\n"
-	
-	if [ $EXT == "MLV" ] || [ $EXT == "mlv" ]; then
-		FPS=`${MLV_DUMP} -v -m ${ARG} | grep FPS | awk 'FNR == 1 {print $3}'`
-		$MLV_DUMP $ARG -o "${TMP}/${TRUNC_ARG}_" --dng --no-cs >/dev/null 2>/dev/null
-	elif [ $EXT == "RAW" ] || [ $EXT == "raw" ]; then
-		FPS=`$RAW_DUMP $ARG "${TMP}/${TRUNC_ARG}_" | awk '/FPS/ { print $3; }'` #Run the dump while awking for the FPS.
-	fi
+#Darkframe Averaging
+	if [ $DARKFRAME != "" ]; then
+		echo -e "\e[1m${TRUNC_ARG}:\e[0m Creating darkframe for subtraction...\n"
 		
-	FRAMES=$(find ${TMP} -name "*.dng" | wc -l)
+		avgFrame="${TMP}/darkframe.MLV"
+		newArg="${TMP}/subtracted.MLV"
+		
+		$MLV_DUMP -o "${avgFrame}" -a $DARKFRAME >/dev/null 2>/dev/null
+		$MLV_DUMP -o $newArg -s $avgFrame $ARG >/dev/null 2>/dev/null
+	fi
+	
+#Dump to DNG sequence, perhaps subtracting darkframe.
+	if [ -d $ARG ]; then
+		echo -e "\e[1m${TRUNC_ARG}:\e[0m Using specified folder of RAW sequences...\n" #Use prespecified DNG sequence.
+		find $ARG -iname "*.dng" | xargs -I {} cp {} $TMP #Copying DNGs to TMP.
+		FPS=24 #Set FPS just in case.
+		FRAMES=$(find ${TMP} -name "*.dng" | wc -l)
+	else
+		echo -e "\e[1m${TRUNC_ARG}:\e[0m Dumping to DNG Sequence...\n"
+				
+		if [ $DARKFRAME != "" ]; then #Whether or not to use the newArg subtracted MLV.
+			inputFile=$newArg
+			rawStat="*Skipping Darkframe subtraction for RAW file ${TRUNC_ARG}."
+		else
+			inputFile=$ARG
+			rawStat="\c"
+		fi
+		
+		if [ $EXT == "MLV" ] || [ $EXT == "mlv" ]; then
+			FPS=`${MLV_DUMP} -v -m ${inputFile} | grep FPS | awk 'FNR == 1 {print $3}'`
+			$MLV_DUMP $inputFile -o "${TMP}/${TRUNC_ARG}_" --dng --no-cs >/dev/null 2>/dev/null
+		elif [ $EXT == "RAW" ] || [ $EXT == "raw" ]; then
+			echo -e $rawStat
+			FPS=`$RAW_DUMP $inputFile "${TMP}/${TRUNC_ARG}_" | awk '/FPS/ { print $3; }'` #Run the dump while awking for the FPS.
+		fi
+			
+		FRAMES=$(find ${TMP} -name "*.dng" | wc -l)
+	fi
 	
 	
 #Dual ISO Conversion
@@ -546,14 +616,14 @@ for ARG in $*; do
 					rm -rf $6
 					break
 				else
-					sleep 0.2
+					sleep 0.05
 				fi
 			done
 		}
 		
 		export -f inc_iso #Must expose function to subprocess.
 		
-		find $TMP -name *.dng -print0 | sort -z | xargs -0 -I {} -P $THREADS -n 1 bash -c "inc_iso {} $CR_HDR $TMP $FRAMES $oldFiles $lPath $iPath"
+		find $TMP -name "*.dng" -print0 | sort -z | xargs -0 -I {} -P $THREADS -n 1 bash -c "inc_iso {} $CR_HDR $TMP $FRAMES $oldFiles $lPath $iPath"
 		rm $iPath
 		echo -e "\n"
 	fi
@@ -571,7 +641,7 @@ for ARG in $*; do
 		toBal="${TMP}/toBal"
 		mkdirS $toBal
 		
-		#Devlelop every nth file for averaging.
+		#Develop every nth file for averaging.
 		i=0
 		t=0
 		trap "rm -rf ${FILE}; exit 1" INT
@@ -746,7 +816,7 @@ for ARG in $*; do
 		DNG="${FILE}/dng_${TRUNC_ARG}"
 		mkdirS $DNG
 		
-		if [ $DUAL_ISO ]; then
+		if [ $DUAL_ISO == true ]; then
 			oldFiles="${TMP}/orig_dng"
 			find $oldFiles -name "*.dng" | xargs -I '{}' mv {} $DNG #Preserve the original, unprocessed DNGs.
 		else

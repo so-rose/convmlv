@@ -122,7 +122,7 @@ help () { #This is a little too much @ this point...
 		
 	echo -e "	-p[0:3]   PROXY - Specifies the proxy mode. 0 is default." 
 	echo -e "	  --> 0: No proxies. 1: H.264 proxy. 2: JPG proxy sequence. 3: Both."
-	echo -e "	  --> Proxies won't be developed without the main output - ex. JPG proxies require -i.\n"
+	echo -e "	  --> JPG proxy won't be developed w/o -i. H.264 proxy will be developed no matter what, if specified.\n"
 	
 	echo -e "	-s[0%:100%]   PROXY_SCALE - the size, in %, of the proxy output."
 	echo -e "	  --> Use -s<percentage>% (no space). 50% is default.\n"
@@ -549,7 +549,7 @@ for ARG in $*; do
 	fi
 	
 #Darkframe Averaging
-	if [ $DARKFRAME != "" ]; then
+	if [ ! $DARKFRAME == "" ]; then
 		echo -e "\e[1m${TRUNC_ARG}:\e[0m Creating darkframe for subtraction...\n"
 		
 		avgFrame="${TMP}/avg.darkframe" #The path to the averaged darkframe file.
@@ -575,7 +575,7 @@ for ARG in $*; do
 	else
 		echo -e "\e[1m${TRUNC_ARG}:\e[0m Dumping to DNG Sequence...\n"
 				
-		if [ $DARKFRAME != "" ]; then #Just to let the user know that darkframe subtraction is impossible with RAW.
+		if [ ! $DARKFRAME == "" ]; then #Just to let the user know that darkframe subtraction is impossible with RAW.
 			rawStat="*Skipping Darkframe subtraction for RAW file ${TRUNC_ARG}."
 		else
 			rawStat="\c"
@@ -695,9 +695,13 @@ for ARG in $*; do
 #DEFINE FUNCTIONS
 		
 	dcrawOpt() {
-		find "${TMP}" -maxdepth 1 -iname '*.dng' -print0 | sort -z | xargs -0 \
+		find "${TMP}" -maxdepth 1 -iname "*.dng" -print0 | sort -z | xargs -0 \
 			dcraw -c -q $DEMO_MODE $FOUR_COLOR $BADPIXELS $WHITE -H $HIGHLIGHT_MODE -g $GAMMA $NOISE_REDUC -o 0 $DEPTH
 	} #Is prepared to pipe all the files in TMP outwards.
+	
+	dcrawImg() { #Find and splay image sequence data as ppm, ready to be processed by ffmpeg.
+		find "${SEQ}" -maxdepth 1 -iname "*.${IMG_FMT}" -print0 | sort -z | xargs -0 -I {} convert {} ppm:-
+	} #Finds all images, prints to stdout quickly without any operations using convert.
 	
 	mov_main() {
 		ffmpeg -f image2pipe -vcodec ppm -r $FPS -i pipe:0 \
@@ -805,13 +809,22 @@ for ARG in $*; do
 			echo -e "\e[1m${TRUNC_ARG}:\e[0m Encoding to ProRes..."
 			dcrawOpt | mov_main
 		fi
-	elif [ $MOVIE == true ] && [ $IMAGES == true ]; then
+	elif [ $MOVIE == true ] && [ $IMAGES == true ]; then #Use images if available, as opposed to developing the files again.
 		if [ $isH264 == true ]; then
 			echo -e "\e[1m${TRUNC_ARG}:\e[0m Encoding to ProRes/H.264..."
-			runSim dcrawOpt mov_main mov_prox
+			runSim dcrawImg mov_main mov_prox
 		else
 			echo -e "\e[1m${TRUNC_ARG}:\e[0m Encoding to ProRes..."
-			dcrawOpt | mov_main
+			dcrawImg | mov_main
+		fi
+	fi
+	
+	if [ $MOVIE == false ] && [ $isH264 == true ]; then
+		echo -e "\e[1m${TRUNC_ARG}:\e[0m Encoding to H.264..."
+		if [ $IMAGES == true ]; then
+			dcrawImg | mov_prox
+		else
+			dcrawOpt | mov_prox
 		fi
 	fi
 	

@@ -22,30 +22,29 @@
 #~ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 #~ SOFTWARE.
 
+#BASIC VARS
+VERSION="1.7.2" #Version string.
+THREADS=8
 
-#BASIC CONSTANTS
+#DEPENDENCIES
 DEB_DEPS="imagemagick dcraw ffmpeg python3 python3-pip exiftool" #Dependency package names (Debian). List with -K option.
 PIP_DEPS="numpy Pillow tifffile" #Technically, you don't need Pillow. I'm not really sure :).
 MAN_DEPS="mlv_dump raw2dng cr2hdr mlv2badpixels.sh balance.py"
-VERSION="1.7.2" #Version string.
 PYTHON="python3"
-THREADS=8
 
-#NON-STANDARD FILE LOCATIONS
+#PATHS
 MLV_DUMP="./mlv_dump" #Path to mlv_dump location.
 RAW_DUMP="./raw2dng" #Path to raw2dng location.
 CR_HDR="./cr2hdr" #Path to cr2hdr location.
 MLV_BP="./mlv2badpixels.sh"
 PYTHON_BAL="./balance.py"
-DARKFRAME=""
-
 BAL="${PYTHON} ${PYTHON_BAL}"
-
-#MODDABLE CONSTANTS //The hell is a 'moddable constant'.
 OUTDIR="$(pwd)/raw_conv"
 isOutGen=false
+
+#OUTPUT
 MOVIE=false
-FPS=24 #Will be read from .MLV.
+FPS=24 #Will be read from .MLV or .RAW.
 IMAGES=false
 IMG_FMT="exr"
 COMPRESS=""
@@ -53,12 +52,8 @@ isCOMPRESS=false
 isJPG=false
 isH264=false
 KEEP_DNGS=false
-CHROMA_SMOOTH="--no-cs"
 
-#ISO
-DUAL_ISO=false
-
-#DCraw
+#RAW DEVELOPOMENT
 HIGHLIGHT_MODE="0"
 PROXY_SCALE="75%"
 DEMO_MODE="1"
@@ -66,10 +61,15 @@ GAMMA="1 1"
 DEPTH="-4"
 DEPTH_OUT="-depth 16"
 NOISE_REDUC=""
+FOUR_COLOR=""
+CHROMA_SMOOTH="--no-cs"
+
+#FEATURES
+DUAL_ISO=false
 BADPIXELS=""
 BADPIXEL_PATH=""
 isBP=false
-FOUR_COLOR=""
+DARKFRAME=""
 
 #White Balance
 WHITE=""
@@ -229,7 +229,7 @@ mkdirS() {
 	
 }
 
-parseArgs() { #Holy garbage
+parseArgs() { #Fixing this would be difficult.
 	if [ `echo ${ARG} | cut -c1-1` = "-" ]; then
 		if [ `echo ${ARG} | cut -c2-2` = "H" ]; then
 			HIGHLIGHT_MODE=`echo ${ARG} | cut -c3-3`
@@ -458,29 +458,6 @@ checkDeps() {
 		fi
 }
 
-runSim() {
-	# Command: cat $PIPE | cmd1 & cmdOrig | tee $PIPE | cmd2
-	
-	# cat $PIPE | cmd1 - gives output of pipe live. Pipes it into cmd1. Nothing yet; just setup.
-	# & - runs the next part in the background.
-	# cmdOrig | tee $PIPE | cmd2 - cmdOrig pipes into the tee, which splits it back into the previous pipe, piping on to cmd2!
-	
-	# End Result: Output of cmdOrig is piped into cmd1 and cmd2, which execute, both printing to stdout.
-	
-	cmdOrig=$1
-	cmd1=$2
-	cmd2=$3
-	
-	#~ echo $cmdOrig $cmd1 $cmd2
-	#~ echo $($cmdOrig)
-	
-	PIPE="${TMP}/pipe_vid" # $(date +%s%N | cut -b1-13)"
-	mkfifo $PIPE 2>/dev/null
-	
-	cat $PIPE | $cmd1 & $cmdOrig | tee $PIPE | $cmd2 #The magic of simultaneous execution ^_^
-	#~ cat $PIPE | tr 'e' 'a' & echo 'hello' | tee $PIPE | tr 'e' 'o' #The magic of simultaneous execution ^_^
-}
-
 
 if [ $# == 0 ]; then
 	help
@@ -491,9 +468,9 @@ ARGNUM=$#
 
 for ARG in $*; do
 #Evaluate command line arguments. ARGNUM decrements to keep track of how many files there are to process.
-	parseArgs # <-- Has a continue statement inside of it.
+	parseArgs # <-- Has a continue statement inside of it if we haven't reached the output.
 	
-#Check that main dependencies exist.
+#Check that things exist.
 	checkDeps
 	
 #List remaining files to process.
@@ -517,9 +494,9 @@ for ARG in $*; do
 
 #PREPARATION
 
-#Basic Directory Structure.
+#Establish Basic Directory Structure.
 	if [ $OUTDIR != $PWD ] && [ isOutGen == false ]; then
-		mkdir -p $OUTDIR #NO RISKS. WE REMEMBER THE LUT.py. RIP OLD FRIEND.
+		mkdir -p $OUTDIR #NO RISKS. WE REMEMBER THE LUT.py. RIP.
 		isOutGen=true
 	fi
 		
@@ -534,7 +511,7 @@ for ARG in $*; do
 	mkdirS $FILE
 	mkdirS $TMP
 	
-#Create badpixels file, IF dual_iso isn't active.
+#Create badpixels file.
 	if [ $isBP == true ]; then
 		echo -e "\e[1m${TRUNC_ARG}:\e[0m Generating badpixels file...\n"
 		
@@ -546,34 +523,6 @@ for ARG in $*; do
 		elif [ $EXT == "RAW" ] || [ $EXT == "raw" ]; then
 			$MLV_BP -o $gen_bad $ARG
 		fi
-		
-		#~ if [ $DUAL_ISO == true ]; then #Brute force grid in everything. Experiment gone wrong...
-			#~ echo "" > $gen_bad
-			#~ echo $gen_bad
-			#~ mapfile < $gen_bad
-			#~ mFile=$(echo "${MAPFILE[@]}")
-			#~ echo $file
-			#~ exit
-			#~ for line in $mFile; do
-				#~ if ($(echo "${line}" | cut -c1-1) == "#"); then
-					#~ continue
-				#~ fi
-				#~ xyd=(`echo ${line}`);
-				#~ echo $line
-				#~ echo hi
-				#~ exit
-				#~ 
-				#~ #3x3 badpixel fill in.
-				#~ for x in {-1..1}; do
-					#~ for y in {-2..2}; do
-						#~ if [ x == 0 ] || [ y == 0 ]; then
-							#~ continue
-						#~ fi
-						#~ echo "$(echo "${xyd[0]} + $x" | bc) $(echo "${xyd[1]} + $y" | bc) 0" > $gen_bad
-					#~ done
-				#~ done
-			#~ done
-		#~ fi
 		
 		if [ ! -z $BADPIXEL_PATH ]; then
 			if [ -f "${TMP}/${bad_name}" ]; then
@@ -607,10 +556,11 @@ for ARG in $*; do
 		DARK_PROC="-s ${avgFrame}"
 	fi
 	
-#Dump to DNG sequence, perhaps subtracting darkframe.
+#Dump to/use DNG sequence, perhaps subtracting darkframe.
 	if [ -d $ARG ]; then
 		echo -e "\e[1m${TRUNC_ARG}:\e[0m Using specified folder of RAW sequences...\n" #Use prespecified DNG sequence.
 		find $ARG -iname "*.dng" | xargs -I {} cp {} $TMP #Copying DNGs to TMP.
+		
 		FPS=24 #Set FPS just in case.
 		FRAMES=$(find ${TMP} -name "*.dng" | wc -l)
 	else
@@ -646,36 +596,21 @@ for ARG in $*; do
 		oldFiles="${TMP}/orig_dng"
 		mkdirS $oldFiles
 		
-		#Prepare for parallelism.
-		lPath="${TMP}/devel.lock"
-		iPath="${TMP}/iCount"
-		touch $iPath
-		echo "" >> $iPath #Increment the count. 0 lines is uncountable
-		
-		inc_iso() { #7 args: {} $CR_HDR $TMP $FRAMES $oldFiles $lPath $iPath. {} is a path. Progress is thread safe. Experiment gone right :).
-			$2 $1 --no-cs >/dev/null 2>/dev/null #The LQ option, --mean23, is completely unusable in my opinion.
+		inc_iso() { #6 args: {} $CR_HDR $TMP $FRAMES $oldFiles $CHROMA_SMOOTH. {} is a path. Progress is thread safe. Experiment gone right :).
+			count=$(echo $(echo $1 | rev | cut -d "_" -f 1 | rev | cut -d "." -f 1 | grep "[0-9]") | bc) #Get count from filename.
+			
+			$2 $1 $CHROMA_SMOOTH >/dev/null 2>/dev/null #The LQ option, --mean23, is completely unusable in my opinion.
 			
 			name=$(basename "$1")
 			mv "${3}/${name%.*}.dng" $5 #Move away original dngs.
 			mv "${3}/${name%.*}.DNG" "${3}/${name%.*}.dng" #Rename *.DNG to *.dng.
 			
-			while true; do #This is the progress indicator. Don't use count to index the files; it won't correspond.
-				if mkdir $6 2>/dev/null; then #Lock mechanism. If dir is made, true. If not, sleep. Suppress errors.
-					count="$(wc -l < "${7}")" #Read the count from iPath.
-					echo -e "\e[2K\rDual ISO Development: Frame ${count}/${4}\c"
-					echo "" >> $7 #Increment the count by adding a line to iPath.
-					rm -rf $6
-					break
-				else
-					sleep 0.05
-				fi
-			done
+			echo -e "\e[2K\rDual ISO Development: Frame ${count}/${4}\c"
 		}
 		
 		export -f inc_iso #Must expose function to subprocess.
 		
-		find $TMP -name "*.dng" -print0 | sort -z | xargs -0 -I {} -P $THREADS -n 1 bash -c "inc_iso {} $CR_HDR $TMP $FRAMES $oldFiles $lPath $iPath"
-		rm $iPath
+		find $TMP -name "*.dng" -print0 | sort -z | xargs -0 -I {} -P $THREADS -n 1 bash -c "inc_iso {} $CR_HDR $TMP $FRAMES $oldFiles $CHROMA_SMOOTH"
 		echo -e "\n"
 	fi
 
@@ -737,7 +672,7 @@ for ARG in $*; do
 		cp $SOUND_PATH $FILE
 	fi
 	
-#DEFINE FUNCTIONS
+#DEFINE PROCESSING FUNCTIONS
 		
 	dcrawOpt() { #Find, develop, and splay raw DNG data as ppm, ready to be processed.
 		find "${TMP}" -maxdepth 1 -iname "*.dng" -print0 | sort -z | xargs -0 \
@@ -758,6 +693,29 @@ for ARG in $*; do
 			-loglevel panic -stats $SOUND -c:v libx264 -n -r $FPS -preset fast -vf "scale=trunc(iw/2)*${SCALE}:trunc(ih/2)*${SCALE}" -crf 23 $LUT -c:a mp3 "${VID}_lq.mp4"
 	} #The option -vf "scale=trunc(iw/2)*2:trunc(ih/2)*2" fixes when x264 is unhappy about non-2 divisible dimensions.
 	
+	runSim() {
+		# Command: cat $PIPE | cmd1 & cmdOrig | tee $PIPE | cmd2
+		
+		# cat $PIPE | cmd1 - gives output of pipe live. Pipes it into cmd1. Nothing yet; just setup.
+		# & - runs the next part in the background.
+		# cmdOrig | tee $PIPE | cmd2 - cmdOrig pipes into the tee, which splits it back into the previous pipe, piping on to cmd2!
+		
+		# End Result: Output of cmdOrig is piped into cmd1 and cmd2, which execute, both printing to stdout.
+		
+		cmdOrig=$1
+		cmd1=$2
+		cmd2=$3
+		
+		#~ echo $cmdOrig $cmd1 $cmd2
+		#~ echo $($cmdOrig)
+		
+		PIPE="${TMP}/pipe_vid" # $(date +%s%N | cut -b1-13)"
+		mkfifo $PIPE 2>/dev/null
+		
+		cat $PIPE | $cmd1 & $cmdOrig | tee $PIPE | $cmd2 #The magic of simultaneous execution ^_^
+		#~ cat $PIPE | tr 'e' 'a' & echo 'hello' | tee $PIPE | tr 'e' 'o' #The magic of simultaneous execution ^_^
+	}
+	
 	img_par() { #Takes 17 arguments: {} $DEMO_MODE $FOUR_COLOR $BADPIXELS $WHITE $HIGHLIGHT_MODE $GAMMA $NOISE_REDUC $DEPTH $SEQ $TRUNC_ARG $IMG_FMT $FRAMES $DEPTH_OUT $COMPRESS $isJPG $PROXY_SCALE $PROXY
 		count=$(echo $(echo $1 | rev | cut -d "_" -f 1 | rev | cut -d "." -f 1 | grep "[0-9]") | bc) #Instead of count from file, count from name!
 		if [ ${16} == true ]; then
@@ -774,21 +732,24 @@ for ARG in $*; do
 	
 	export -f img_par
 	
-	SEQ="${FILE}/${IMG_FMT}_${TRUNC_ARG}"
-	PROXY="${FILE}/proxy_${TRUNC_ARG}"
+	
+#PROCESSING
 
 #IMAGE PROCESSING
 	if [ $IMAGES == true ] ; then
 		echo -e "\e[1m${TRUNC_ARG}:\e[0m Processing Image Sequence...\n"
 		
 #Define Image Directories, Create SEQ directory
+		SEQ="${FILE}/${IMG_FMT}_${TRUNC_ARG}"
+		PROXY="${FILE}/proxy_${TRUNC_ARG}"
+		
 		mkdirS $SEQ
 		
 		if [ $isJPG == true ]; then
 			mkdirS $PROXY
 		fi
 		
-#Define compression based on IMG_FMT
+#Define hardcoded compression based on IMG_FMT
 		if [ $isCOMPRESS == true ]; then
 			if [ $IMG_FMT == "exr" ]; then
 				COMPRESS="-compress piz"
@@ -798,7 +759,7 @@ for ARG in $*; do
 				COMPRESS="-quality 9"
 			elif [ $IMG_FMT == "dpx" ]; then
 				COMPRESS="-compress rle"
-			fi #Compression modes are hardcoded.
+			fi
 		fi
 
 #Convert all the actual DNGs to IMG_FMT, in parallel.
@@ -815,7 +776,7 @@ for ARG in $*; do
 		
 		echo -e "\n"
 		
-#Potentially apply a LUT.
+#Apply a LUT to non-EXR images.
 		if [ $isLUT == true ]; then #Some way to package this into the development itself without piping hell?
 			if [ $IMG_FMT == "exr" ]; then
 				echo -e "*Cannot apply LUT to EXR sequences."
@@ -826,11 +787,8 @@ for ARG in $*; do
 				mkdirS $lutLoc
 				
 				find $SEQ -name "*.${IMG_FMT}" | xargs -I '{}' mv {} "${lutLoc}"
-				#~ mv "${SEQ}/*.${IMG_FMT}" "${TMP}/lut_conv" #Move back into tmp so it can be processed back out.
 				ffmpeg -f image2 -i "${lutLoc}/${TRUNC_ARG}_%06d.${IMG_FMT}" -loglevel panic -stats -vf $LUT "${SEQ}/${TRUNC_ARG}_%06d.${IMG_FMT}"
-				#ffmpeg doesn't like tiffs.
 			fi
-			#~ exit
 		fi
 	fi
 	
@@ -895,50 +853,3 @@ for ARG in $*; do
 done
 
 exit 0
-
-test() {
-	bench() {
-		first=`echo "$(date +%s%N | cut -b1-13) / 1000" | bc -l`
-		$1
-		end=`echo "($(date +%s%N | cut -b1-13) / 1000 ) - ${first}" | bc -l`
-		echo $end
-	} #Just a test :).
-	
-	#Old Image Development
-		i=0 #Very important variable. See functions called.
-		trap "rm -rf ${FILE}; exit 1" INT
-		for file in $TMP/*.dng; do
-			if [ $isJPG == true ]; then
-				runSim dcrawFile img_main img_prox
-				echo -e "\e[2K\rDNG to ${IMG_FMT^^}/JPG (dcraw): Frame $(echo "${i} + 1" | bc)/${FRAMES}.\c"
-			else
-				dcrawFile $file | img_main
-				echo -e "\e[2K\rDNG to ${IMG_FMT^^} (dcraw): Frame $(echo "${i} + 1" | bc)/${FRAMES}.\c"
-			fi
-			let i++
-		done
-	
-	img_main() {
-		convert $DEPTH_OUT - $COMPRESS $(printf "${SEQ}/${TRUNC_ARG}_%06d.${IMG_FMT}" $i) #Make sure to do deep analysis later.
-		#Requires some variable i outside the scope of the function.
-	}
-	
-	img_prox() {
-		convert - -quality 90 -resize $PROXY_SCALE $(printf "${PROXY}/${TRUNC_ARG}_%06d.jpg" $i)
-	} #-quiet
-	
-	dcrawFile() {
-		dcraw -c -q $DEMO_MODE $FOUR_COLOR $BADPIXELS $WHITE -H $HIGHLIGHT_MODE -g $GAMMA $NOISE_REDUC -o 0 $DEPTH $file
-		#Requires some file outside the scope of the function. Pipes that file.
-	}
-	
-	#Prepare for parallelism.
-		lPath="${TMP}/devel.lock"
-		iPath="${TMP}/iCount"
-		touch $iPath
-		echo "" >> $iPath #Increment the count. 0 lines is uncountable.
-		
-	#Use mkdir $lPath in an if as a lock.
-	
-	cat $PIPE | vidLQ & echo "text" | tee $PIPE | vidHQ # Old method. Surprised it worked...
-}

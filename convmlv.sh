@@ -10,10 +10,10 @@
 #~ to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
 #~ copies of the Software, and to permit persons to whom the Software is
 #~ furnished to do so, subject to the following conditions:
-
+#~ 
 #~ The above copyright notice and this permission notice shall be included in all
 #~ copies or substantial portions of the Software.
-
+#~ 
 #~ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 #~ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
 #~ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -27,7 +27,7 @@
 DEB_DEPS="imagemagick dcraw ffmpeg python3 python3-pip exiftool" #Dependency package names (Debian). List with -K option.
 PIP_DEPS="numpy Pillow tifffile" #Technically, you don't need Pillow. I'm not really sure :).
 MAN_DEPS="mlv_dump raw2dng cr2hdr mlv2badpixels.sh balance.py"
-VERSION="1.7.1" #Version string.
+VERSION="1.7.2" #Version string.
 PYTHON="python3"
 THREADS=8
 
@@ -53,6 +53,7 @@ isCOMPRESS=false
 isJPG=false
 isH264=false
 KEEP_DNGS=false
+CHROMA_SMOOTH="--no-cs"
 
 #ISO
 DUAL_ISO=false
@@ -80,113 +81,131 @@ WHITE_SPD=15
 LUT=""
 isLUT=false
 
+help() {
+cat << EOF
+Usage:
+	$(echo -e "\033[1m./convmlv.sh\033[0m [OPTIONS] \033[2mmlv_files\033[0m")
+	
+	
+INFO:
+	A script allowing you to convert .MLV, .RAW, or a folder with a DNG sequence into a sequence/movie with optional proxies. Images
+	are auto compressed. Many useful options are exposed, including formats (EXR by default).
+	
+	
+DEPENDENCIES: If you don't use a feature, you don't need the dependency, though it's best to download them all.
+	-mlv_dump: For DNG extraction from MLV. http://www.magiclantern.fm/forum/index.php?topic=7122.0
+	-raw2dng: For DNG extraction from RAW. http://www.magiclantern.fm/forum/index.php?topic=5404.0
+	-mlv2badpixels.sh: For bad pixel removal. https://bitbucket.org/daniel_fort/ml-focus-pixels/src
+	-dcraw: For RAW development.
+	-ffmpeg: For video creation.
+	-ImageMagick: Used for making proxy sequence.
+	-Python 3 + libs: Used for auto white balance.
+	-exiftool: Used in mlv2badpixels.sh.
+	
+	
+$(echo -e "VERSION: ${VERSION}")
 
-help () { #This is a little much @ this point...
-	echo -e "Usage:\n	\033[1m./convmlv.sh\033[0m [OPTIONS] \033[2mmlv_files\033[0m\n"
-			
-	echo -e "INFO:\n	A script allowing you to convert .MLV, .RAW, or a folder with a DNG sequence into a sequence/movie
-	with optional proxies. Many useful options are exposed, including formats (EXR by default).\n"
 
-	echo -e "DEPENDENCIES: *If you don't use a feature, you don't need the dependency. Don't use a feature without the dependency."
-	echo -e "	-mlv_dump: For DNG extraction from MLV. http://www.magiclantern.fm/forum/index.php?topic=7122.0"
-	echo -e "	-raw2dng: For DNG extraction from RAW. http://www.magiclantern.fm/forum/index.php?topic=5404.0"
-	echo -e "	-mlv2badpixels.sh: For bad pixel removal. https://bitbucket.org/daniel_fort/ml-focus-pixels/src"
-	echo -e "	-dcraw: For RAW development."
-	echo -e "	-ffmpeg: For video creation."
-	echo -e "	-ImageMagick: Used for making proxy sequence."
-	echo -e "	-Python 3 + libs: Used for auto white balance."
-	echo -e "	-exiftool + xxd: Used in mlv2badpixels.sh.\n"
+OPTIONS, BASIC:
+	-v   version - Print out version string.
+	-o<path>   OUTDIR - The path in which files will be placed (no space btwn -o and path).
+	-M<path>   MLV_DUMP - The path to mlv_dump (no space btwn -M and path). Default is './mlv_dump'.
+	-R<path>   RAW_DUMP - The path to raw2dng (no space btwn -M and path). Default is './raw2dng'.
+	-y<path>   PYTHON - The path or command used to invoke Python. Defaults to python3.
+	-B<path>   MLV_BP - The path to mlv2badpixels.sh (by dfort). Default is './mlv2badpixels.sh'.
 	
-	echo -e "VERSION: ${VERSION}\n"
+	-T[int]    Max process threads, for multithreaded parts of the program. Defaults to 8.
+	
+	
+OPTIONS, OUTPUT:
+	-i   IMAGE - Specify to create an image sequence (EXR by default).
+	
+	-f[0:3]   IMG_FMT - Create a sequence of <format> format. 0 is default.
+	  --> 0: EXR (default), 1: TIFF, 2: PNG, 3: Cineon (DPX)."
 
-
-	echo -e "OPTIONS, BASIC:"
-	echo -e "	-v   version - Print out version string."
-	echo -e "	-o<path>   OUTDIR - The path in which files will be placed (no space btwn -o and path)."
-	echo -e "	-M<path>   MLV_DUMP - The path to mlv_dump (no space btwn -M and path). Default is './mlv_dump'."
-	echo -e "	-R<path>   RAW_DUMP - The path to raw2dng (no space btwn -M and path). Default is './raw2dng'."
-	echo -e "	-y<path>   PYTHON - The path or command used to invoke Python. Defaults to python3."
-	echo -e "	-B<path>   MLV_BP - The path to mlv2badpixels.sh (by dfort). Default is './mlv2badpixels.sh'."
-	echo -e "	-T[int]    Max process threads, for multithreaded parts of the program. Defaults to 8.\n\n"
+	-c   COMPRESS - Specify to turn ***off*** automatic image compression. Auto compression options otherwise used:
+	  --> TIFF: ZIP (best for 16-bit), PIZ for EXR (best for grainy images), PNG: lvl 9 (zlib deflate), DPX: RLE.
+	  --> EXR's piz compression tends to be fastest + best.
 	
-	echo -e "OPTIONS, OUTPUT:"
-	echo -e "	-i   IMAGE - Specify to create an image sequence (EXR by default).\n" 
+	-m   MOVIE - Specify to create a Prores4444 video.
 	
-	echo -e "	-f[0:3]   IMG_FMT - Create a sequence of <format> format, instead of a TIFF sequence."
-	echo -e "	  --> 0: EXR (default), 1: TIFF, 2: PNG, 3: Cineon (DPX).\n" #Future: More formats?
+	-p[0:3]   PROXY - Specifies the proxy mode. 0 is default.
+	  --> 0: No proxies. 1: H.264 proxy. 2: JPG proxy sequence. 3: Both.
+	  --> JPG proxy won't be developed w/o -i. H.264 proxy will be developed no matter what, if specified.
 	
-	echo -e "	-c   COMPRESS - Specify to automatically compress the image sequence."
-	echo -e "	  --> TIFF: ZIP (best for 16-bit), PIZ for EXR (best for grainy images), PNG: lvl 9 (zlib deflate), DPX: RLE."
-	echo -e "	  --> EXR's piz compression tends to be fastest + best.\n"
+	-s[0%:100%]   PROXY_SCALE - the size, in %, of the proxy output.
+	  --> Use -s<percentage>% (no space). 50% is default.
 	
-	echo -e "	-m   MOVIE - Specify to create a Prores4444 video.\n"
-		
-	echo -e "	-p[0:3]   PROXY - Specifies the proxy mode. 0 is default." 
-	echo -e "	  --> 0: No proxies. 1: H.264 proxy. 2: JPG proxy sequence. 3: Both."
-	echo -e "	  --> JPG proxy won't be developed w/o -i. H.264 proxy will be developed no matter what, if specified.\n"
+	-k   KEEP_DNGS - Specify if you want to keep the DNG files.
+	  --> Besides testing, this makes the script a glorified mlv_dump...
 	
-	echo -e "	-s[0%:100%]   PROXY_SCALE - the size, in %, of the proxy output."
-	echo -e "	  --> Use -s<percentage>% (no space). 50% is default.\n"
 	
-	echo -e "	-k   KEEP_DNGS - Specify if you want to keep the DNG files."
-	echo -e "	  --> Besides testing, this makes the script a glorified mlv_dump...\n\n"
+OPTIONS, RAW DEVELOPMENT:
+	-d[0:3]   DEMO_MODE - DCraw demosaicing mode. Higher modes are slower. 1 is default.
+	  --> Use -d<mode> (no space). 0: Bilinear. 1: VNG (default). 2: PPG. 3: AHD.
 	
-	echo -e "OPTIONS, RAW DEVELOPMENT:"
-	echo -e "	-u    DUAL_ISO - Process file as dual ISO.\n"
+	-r   FOUR_COLOR - Interpolate as four colors. Can often fix weirdness with VNG/AHD.
 	
-	echo -e "	-d[0:3]   DEMO_MODE - DCraw demosaicing mode. Higher modes are slower. 1 is default."
-	echo -e "	  --> Use -d<mode> (no space). 0: Bilinear. 1: VNG (default). 2: PPG. 3: AHD.\n"
+	-H[0:9]   HIGHLIGHT_MODE - 2 looks the best, but can break. 0 is a safe bet.
+	  --> Use -H<number> (no space). 0 clips. 1 allows colored highlights. 2 adjusts highlights to grey.
+	  --> 3 through 9 do highlight reconstruction with a certain tone. See dcraw documentation.
 	
-	echo -e "	-r   FOUR_COLOR - Interpolate as four colors. Can often fix weirdness with VNG/AHD.\n"
+	-C[0:3]   CHROMA_SMOOTH - Apply chroma smoothing to the footage, which may help ex. with noise/bad pixels.
+	  --> 0: None (default). 1: 2x2. 2: 3x3. 3: 5x5.
+	  --> Only applied to .MLV files.
 	
-	echo -e "	-H[0:9]   HIGHLIGHT_MODE - 2 looks the best, without major modifications. 0 is also a safe bet."
-	echo -e "	  --> Use -H<number> (no space). 0 clips. 1 allows colored highlights. 2 adjusts highlights to grey."
-	echo -e "	  --> 3 through 9 do highlight reconstruction with a certain tone. See dcraw documentation.\n"
+	-n[int]   NOISE_REDUC - This is the threshold of wavelet denoising - specify to use.
+	  --> Use -n<number>. Defaults to no denoising. 150 tends to be a good setting; 350 starts to look strange.
 	
-	echo -e "	-b   BADPIXELS - Fix focus pixels issue using dfort's script."
-	echo -e "	  --> His file can be found at https://bitbucket.org/daniel_fort/ml-focus-pixels/src.\n"
+	-g[0:4]   GAMMA - This is a modal gamma curve that is applied to the image. 0 is default.
+	  --> Use -g<mode> (no space). 0: Linear. 1: 2.2 (Adobe RGB). 2: 1.8 (ProPhoto RGB). 3: sRGB. 4: BT.709.
 	
-	echo -e "	-a<path>   BADPIXEL_PATH - Use, appending to the generated one, your own .badpixels file. REQUIRES -b."
-	echo -e "	  --> Use -a<path> (no space). How to: http://www.dl-c.com/board/viewtopic.php?f=4&t=686\n"
+	-S   SHALLOW - Specifying this option will create an 8-bit output instead of a 16-bit output.
+	  --> It'll kind of ruin the point of RAW, though....
 	
-	echo -e "	-n[int]   NOISE_REDUC - This is the threshold of wavelet denoising - specify to use."
-	echo -e "	  --> Use -n<number>. Defaults to no denoising. 150 tends to be a good setting; 350 starts to look strange.\n"
 	
-	echo -e "	-g[0:4]   GAMMA - This is a modal gamma curve that is applied to the image. 0 is default."
-	echo -e "	  --> Use -g<mode> (no space). 0: Linear. 1: 2.2 (Adobe RGB). 2: 1.8 (ProPhoto RGB). 3: sRGB. 4: BT.709.\n"
+OPTIONS, COLOR:
+	-w[0:2]   WHITE - This is a modal white balance setting. Defaults to 0. 1 doesn't always work very well.
+	  --> Use -w<mode> (no space).
+	  --> 0: Auto WB (Requires Python Deps). 1: Camera WB. 2: No Change.
 	
-	echo -e "	-S   SHALLOW - Specifying this option will create an 8-bit output instead of a 16-bit output."
-	echo -e "	  --> It'll kind of ruin the point of RAW, though....\n\n"
+	-A[int]   WHITE_SPD - This is the amount of samples from which AWB will be calculated.
+	  -->About this many frames, averaged over the course of the sequence, will be used to do AWB.
 	
-	echo -e "OPTIONS, COLOR:"
-	echo -e "	-w[0:3]   WHITE - This is a modal white balance setting. Defaults to 0. 1 doesn't always work very well."
-	echo -e "	  --> Use -w<mode> (no space)."
-	echo -e "	  --> 0: Auto WB (Requires Python Deps). 1: Camera WB. 2: No Change.\n"
+	-l<path>   LUT - This is a path to the 3D LUT. Specify the path to the LUT to use it.
+	  --> Compatibility determined by ffmpeg (.cube is supported).
+	  --> LUT cannot be applied to EXR sequences.
+	  --> Path to LUT (no space between -l and path).
 	
-	echo -e "	-F<path>   DARKFRAME - This is the path to the dark frame MLV, for noise reduction."
-	echo -e "	  --> This is a noise reduction technique: Record 5 sec w/lens cap on & same settings as footage."
-	echo -e "	  --> Pass in that MLV file (not .RAW) as <path> to get noise reduction on all passed MLV files."
-	echo -e "	  --> If the file extension is '.darkframe', the file will be used as the preaveraged dark frame.\n"
 	
-	echo -e "	-A[int]   WHITE_SPD - This is the amount of samples from which AWB will be calculated."
-	echo -e "	  -->About this many frames, averaged over the course of the sequence, will be used to do AWB.\n"
+OPTIONS, FEATURES:
+	-u    DUAL_ISO - Process file as dual ISO.
 	
-	echo -e "	-l<path>   LUT - This is a path to the 3D LUT. Specify the path to the LUT to use it."
-	echo -e "	  --> Compatibility determined by ffmpeg (.cube is supported)."
-	echo -e "	  --> LUT cannot be applied to EXR sequences."
-	echo -e "	  --> Path to LUT (no space between -l and path).\n\n"
+	-b   BADPIXELS - Fix focus pixels issue using dfort's script.
+	  --> His file can be found at https://bitbucket.org/daniel_fort/ml-focus-pixels/src.
 	
-	echo -e "OPTIONS, DEPENDENCIES:"
-	echo -e "	-K   Debian Package Deps - Lists dependecies. Works with apt-get on Debian; should be similar elsewhere."
-	echo -e "	  --> No operations will be done."
-	echo -e "	  --> Example: sudo apt-get install $ (./convmlv -K)\n"
+	-a<path>   BADPIXEL_PATH - Use, appending to the generated one, your own .badpixels file. REQUIRES -b.
+	  --> Use -a<path> (no space). How to: http://www.dl-c.com/board/viewtopic.php?f=4&t=686
 	
-	echo -e "	-Y   Python Deps - Lists Python dependencies. Works with pip."
-	echo -e "	  --> No operations will be done. "
-	echo -e "	  --> Example: sudo pip3 install $ (./convmlv -Y)\n"
+	-F<path>   DARKFRAME - This is the path to the dark frame MLV, for noise reduction.
+	  --> This is a noise reduction technique: Record 5 sec w/lens cap on & same settings as footage.
+	  --> Pass in that MLV file (not .RAW) as <path> to get noise reduction on all passed MLV files.
+	  --> If the file extension is '.darkframe', the file will be used as the preaveraged dark frame.
 	
-	echo -e "	-N  Manual Deps - Lists manual dependencies, which must be downloaded by hand."
-	echo -e "	  --> There's no automatic way to install these. See the forum post."
+	
+OPTIONS, DEPENDENCIES:
+	-K   Debian Package Deps - Lists dependecies. Works with apt-get on Debian; should be similar elsewhere.
+	  --> No operations will be done.
+	  --> Example: sudo apt-get install $ (./convmlv -K)
+	
+	-Y   Python Deps - Lists Python dependencies. Works with pip.
+	  --> No operations will be done. 
+	  --> Example: sudo pip3 install $ (./convmlv -Y)
+	
+	-N  Manual Deps - Lists manual dependencies, which must be downloaded by hand.
+	  --> There's no automatic way to install these. See the forum post.
+	
+EOF
 }
 
 mkdirS() {
@@ -242,6 +261,20 @@ parseArgs() { #Holy garbage
 				"2") IMG_FMT="png"
 				;;
 				"3") IMG_FMT="dpx"
+				;;
+			esac
+			let ARGNUM--
+		fi
+		if [ `echo ${ARG} | cut -c2-2` = "C" ]; then
+			mode=`echo ${ARG} | cut -c3-3`
+			case ${mode} in
+				"0") CHROMA_SMOOTH="--no-cs"
+				;;
+				"1") CHROMA_SMOOTH="--cs2x2"
+				;;
+				"2") CHROMA_SMOOTH="--cs3x3"
+				;;
+				"3") CHROMA_SMOOTH="--cs5x5"
 				;;
 			esac
 			let ARGNUM--
@@ -583,15 +616,19 @@ for ARG in $*; do
 	else
 		echo -e "\e[1m${TRUNC_ARG}:\e[0m Dumping to DNG Sequence...\n"
 				
-		if [ ! $DARKFRAME == "" ]; then #Just to let the user know that darkframe subtraction is impossible with RAW.
+		if [ ! $DARKFRAME == "" ] && [ ! $CHROMA_SMOOTH == "--no-cs" ]; then #Just to let the user know that certain features are impossible with RAW.
+			rawStat="*Skipping Darkframe subtraction and Chroma Smoothing for RAW file ${TRUNC_ARG}."
+		elif [ ! $DARKFRAME == "" ]; then
 			rawStat="*Skipping Darkframe subtraction for RAW file ${TRUNC_ARG}."
+		elif [ ! $CHROMA_SMOOTH == "--no-cs" ]; then
+			rawStat="*Skipping Chroma Smoothing for RAW file ${TRUNC_ARG}."
 		else
 			rawStat="\c"
 		fi
 		
 		if [ $EXT == "MLV" ] || [ $EXT == "mlv" ]; then
 			FPS=`${MLV_DUMP} -v -m ${ARG} | grep FPS | awk 'FNR == 1 {print $3}'`
-			$MLV_DUMP $ARG $DARK_PROC -o "${TMP}/${TRUNC_ARG}_" --dng --no-cs >/dev/null 2>/dev/null
+			$MLV_DUMP $ARG $DARK_PROC -o "${TMP}/${TRUNC_ARG}_" --dng $CHROMA_SMOOTH >/dev/null 2>/dev/null
 		elif [ $EXT == "RAW" ] || [ $EXT == "raw" ]; then
 			echo -e $rawStat
 			FPS=`$RAW_DUMP $ARG "${TMP}/${TRUNC_ARG}_" | awk '/FPS/ { print $3; }'` #Run the dump while awking for the FPS.

@@ -4,6 +4,8 @@ MLV to TIFF/ProRes and Proxy ProRes/H.264
 =======
 See [http://www.magiclantern.fm/forum/index.php?topic=16799.0](http://www.magiclantern.fm/forum/index.php?topic=16799.0) for more info.
 
+**Use the pdf found in the source, under docs->docs.pdf.**
+
 Help page is below:
 
 ```text

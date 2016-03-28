@@ -2,7 +2,7 @@
 
 #~ The MIT License (MIT)
 
-#~ Copyright (c) [year] [fullname]
+#~ Copyright (c) 2016 Sofus Rose
 
 #~ Permission is hereby granted, free of charge, to any person obtaining a copy
 #~ of this software and associated documentation files (the "Software"), to deal
@@ -24,8 +24,9 @@
 
 
 #BASIC CONSTANTS
-DEPS="imagemagick dcraw ffmpeg python3 pip3 exiftool xxd" #Dependency package names (Debian). List with -K option.
+DEB_DEPS="imagemagick dcraw ffmpeg python3 python3-pip exiftool" #Dependency package names (Debian). List with -K option.
 PIP_DEPS="numpy Pillow tifffile" #Technically, you don't need Pillow. I'm not really sure :).
+MAN_DEPS="mlv_dump raw2dng cr2hdr mlv2badpixels.sh balance.py"
 VERSION="1.7.1" #Version string.
 PYTHON="python3"
 THREADS=8
@@ -40,7 +41,7 @@ DARKFRAME=""
 
 BAL="${PYTHON} ${PYTHON_BAL}"
 
-#MODDABLE CONSTANTS
+#MODDABLE CONSTANTS //The hell is a 'moddable constant'.
 OUTDIR="$(pwd)/raw_conv"
 isOutGen=false
 MOVIE=false
@@ -80,7 +81,7 @@ LUT=""
 isLUT=false
 
 
-help () { #This is a little too much @ this point...
+help () { #This is a little much @ this point...
 	echo -e "Usage:\n	\033[1m./convmlv.sh\033[0m [OPTIONS] \033[2mmlv_files\033[0m\n"
 			
 	echo -e "INFO:\n	A script allowing you to convert .MLV, .RAW, or a folder with a DNG sequence into a sequence/movie
@@ -183,6 +184,9 @@ help () { #This is a little too much @ this point...
 	echo -e "	-Y   Python Deps - Lists Python dependencies. Works with pip."
 	echo -e "	  --> No operations will be done. "
 	echo -e "	  --> Example: sudo pip3 install $ (./convmlv -Y)\n"
+	
+	echo -e "	-N  Manual Deps - Lists manual dependencies, which must be downloaded by hand."
+	echo -e "	  --> There's no automatic way to install these. See the forum post."
 }
 
 mkdirS() {
@@ -348,7 +352,7 @@ parseArgs() { #Holy garbage
 			let ARGNUM--
 		fi
 		if [ `echo ${ARG} | cut -c2-2` = "K" ]; then
-			echo $DEPS
+			echo $DEB_DEPS
 			exit 0
 		fi
 		if [ `echo ${ARG} | cut -c2-2` = "l" ]; then
@@ -380,6 +384,10 @@ parseArgs() { #Holy garbage
 		fi
 		if [ `echo ${ARG} | cut -c2-2` = "Y" ]; then
 			echo $PIP_DEPS
+			exit 0
+		fi
+		if [ `echo ${ARG} | cut -c2-2` = "N" ]; then
+			echo $MAN_DEPS
 			exit 0
 		fi
 		continue
@@ -607,7 +615,7 @@ for ARG in $*; do
 		touch $iPath
 		echo "" >> $iPath #Increment the count. 0 lines is uncountable
 		
-		inc_iso() { #7 args: {} $CR_HDR $TMP $FRAMES $oldFiles $lPath $iPath. {} is a path. Progress is thread safe.
+		inc_iso() { #7 args: {} $CR_HDR $TMP $FRAMES $oldFiles $lPath $iPath. {} is a path. Progress is thread safe. Experiment gone right :).
 			$2 $1 --no-cs >/dev/null 2>/dev/null #The LQ option, --mean23, is completely unusable in my opinion.
 			
 			name=$(basename "$1")
@@ -694,7 +702,7 @@ for ARG in $*; do
 	
 #DEFINE FUNCTIONS
 		
-	dcrawOpt() {
+	dcrawOpt() { #Find, develop, and splay raw DNG data as ppm, ready to be processed.
 		find "${TMP}" -maxdepth 1 -iname "*.dng" -print0 | sort -z | xargs -0 \
 			dcraw -c -q $DEMO_MODE $FOUR_COLOR $BADPIXELS $WHITE -H $HIGHLIGHT_MODE -g $GAMMA $NOISE_REDUC -o 0 $DEPTH
 	} #Is prepared to pipe all the files in TMP outwards.

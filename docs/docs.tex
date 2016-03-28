@@ -1,0 +1,242 @@
+\documentclass[a4paper,12pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage{listings}
+\usepackage{mathtools}
+\usepackage[hidelinks]{hyperref}
+
+\lstset{tabsize=4,basicstyle=\ttfamily,columns=flexible,emptylines=10000}
+\lstset{literate={'}{\pdfactualsquote}1
+                 {`}{\pdfactualbtick}1
+                 {\ \ }{\pdfactualdspace}2
+}
+
+\author{\textit{by Sofus Rose}}
+\title{\textbf{Using convmlv 1.7.1} \\ {\large Developing Magic Lantern footage with ease}}
+%^^^ Title \\ Subtitle. Subtitle is \large, as opposed to \huge.{}
+
+\begin{document}
+
+\maketitle{}
+\tableofcontents{}
+\newpage
+
+\section{Introduction}
+	Processing the output of Magic Lantern for maximum quality is a technical balancing act that most don't want to deal with. Even if you
+	do, it's often tedious, \textit{especially} on Linux. convmlv aims to make the development of MLV, RAW, and even DNG sequences as easy as
+	possible without compromising quality, whilst exposing as much depth as possible for those who wish to tweak.\\
+	
+	Yes, it's a command line program, but don't let that scare you! 'cd newFolder' lets you change your current folder to newFolder,
+	and 'ls' lets you list all the files in your current folder; that's all you need to follow along here!
+
+\section{Installation}
+	\subsection{General info}
+		convmlv comes in the form of a ``.sh'' script. Installation is a little hairy, but bear with me, and you'll be done in max 10 minutes!\\
+		
+		Besides the script itself, several \textbf{dependencies} are required. How to best get these varies by system.\\
+		
+		To begin, download \textbf{convmlv.sh} and \textbf{balance.py} to the same folder from \url{https://bitbucket.org/so-rose/convmlv}.
+		
+	\subsection{UNIX}
+		On UNIX systems, everything is easy. There is certain setup that must be done, however. Open up a terminal, navigate to the folder containing
+		convmlv and balance.py, and type each line:
+		
+\begin{lstlisting}[language=bash]
+	chmod +x convmlv.sh balance.py #Let convmlv execute.
+\end{lstlisting}
+		
+		You can run the script now, but it won't work! This is because you must install the dependencies. First off, these are the package
+		dependencies; to list all package dependencies, type this:
+
+\begin{lstlisting}[language=bash]
+	./convmlv.sh -K
+\end{lstlisting}
+
+		Find and install the corresponding packages on your machine. Imagemagick must be installed with exr support! If you're on Debian,
+		this task is very, very simple. Just type (or paste):
+		
+\begin{lstlisting}[language=bash]
+	sudo apt-get install $(./convmlv.sh -K) #$Only for debian.
+\end{lstlisting}
+
+		Next, you must install the Python dependencies. This is universally very easy, once you have pip or pip3 installed (try both).
+		On Debian, simply type:
+		
+\begin{lstlisting}[language=bash]
+	sudo pip3 install $(./convmlv.sh -Y) #$Python 3 version of pip.
+\end{lstlisting}
+
+		Finally, you must install the manual dependencies made by the talented Magic Lantern community. You can list these
+		by typing './convmlv.sh -N'.\\
+		
+		\textbf{The Easy Way}: Download each item in the list, making sure you put it in the same folder as convmlv.sh. 'chmod +x' each
+		file by itself, or just run:
+		
+\begin{lstlisting}[language=bash]
+	chmod +x $(./convmlv.sh -N) #$Batch chmod
+\end{lstlisting}
+		
+		If you want to be able to type convmlv instead of ./convmlv.sh, you need to link it to your PATH. On Linux in general:
+		
+\begin{lstlisting}[language=bash]
+	sudo ln -s $(pwd)/convmlv.sh /usr/local/bin/convmlv #$ Link for execution.
+\end{lstlisting}
+		
+		That's it! You're all ready to go!
+		
+	\subsection{Mac}
+	
+		Follow the above UNIX directions, using the Mac Terminal. Instead of the apt-get command, try homebrew and/or install the dependencies manually.
+		If you can access the programs from the command line, then you're golden.
+		
+		There are no other differences.
+
+\section{Output Options}
+
+	The development of an mlv named "footage.mlv" in the current directory into a ProRes video is very, very simple:
+	
+\begin{lstlisting}[language=bash]
+	convmlv -m footage.mlv
+\end{lstlisting}
+
+	A folder named 'raw-conv' will be created, inside of which a folder named 'footage' will be created, inside of which you'll find your
+	high-quality, ready to edit ProRes video! By no means, however, is this the limit of the script.\\
+	
+	Image sequences, the standard in high-quality color grading and VFX, can be outputted either compressed or uncompressed as such:
+	
+\begin{lstlisting}[language=bash]
+	convmlv -i footage.mlv
+\end{lstlisting}
+
+	In the same 'footage' folder, you'll find a folder named exr-footage containing a sequence of OpenEXR files! Other formats
+	are available; refer to './convmlv.sh -h'. If you want to compress the images, simply add -c, and the best lossless compression will
+	be chosen automatically (for some formats, this might incur slowdowns):
+	
+\begin{lstlisting}[language=bash]
+	convmlv -i -c footage.mlv
+\end{lstlisting}
+
+	With these large files, slowdowns can often happen during heavy editing/grading. Sometimes you just want a preview as well.
+	As such, you're able to generate 'proxies' in the form of either an mp4 (mode 1), a jpg sequence (mode 2) or both (mode 3). Specify
+	the mode with the -p option as such:
+	
+\begin{lstlisting}[language=bash]
+	convmlv -i -p3 -c footage.mlv #Will generate mp4/jpg proxy.
+\end{lstlisting}
+
+	Finally, by default the proxies are 1/2 the scale of the original footage, so that editing them is faster.
+	Specify the proxy scale with -s, in percentages, as such:
+	
+\begin{lstlisting}[language=bash]
+	convmlv -i -s75% -p3 -c footage.mlv #75% proxy scale.
+\end{lstlisting}
+
+	JPG proxies won't be generated without the -i option, but mp4 proxies \textbf{will} be generated without the -m option. Finally,
+	also keep in mind that you can create both sequences and videos - just specify both -i and -m.
+
+\section{RAW Development}
+	
+	convmlv uses DCraw, a powerful RAW development tool, for many of its functions here. I'll go through them in detail here:
+	
+	\begin{itemize}
+			\item Demosaicing, -d: RAW images aren't really images; it's literally what the sensor spits out. As such, it's neccessary to process
+			this sensor data, which has pixels for R, G, and B laid out in what's called a Bayer grid, into a viewable image. Algorithms that
+			do this are called demosaicing algorithms, and you have choices! Lower numbers are faster, higher numbers are higher quality.
+			For example, to generate the best quality compressd images, specify:
+			
+\begin{lstlisting}[language=bash]
+	convmlv -i -c -d3 footage.mlv #High quality demosaicing.
+\end{lstlisting}
+
+			\item Four Color Mode, -r: When the VNG and AHD demosaicing modes get strange, this option tends to fix things.
+			\item Noise Reduction, -n: RAW processing is a great point in the pipeline to do some wavelet denoising, if you wish, which reduces
+			noise, but also detail. A setting of 200 can save images that might have been too noisy.
+			\item Gamma, -g: By default, the output is in Linear color space to preserve maximum quality. If you wish, however, your output
+			can be graded to a variety of curves, including sRGB, Adobe RGB, and BT.709.
+			\item Bit Depth, -S: The quality of RAW comes from its high bit depth of 14, which is saved as 16 bits. If you only want 8 bits,
+			however, just specify -S. You really do want 16 bits though...
+		\end{itemize}
+	
+\section{White Balance}
+	In convmlv, Auto White Balance is used by default. If you wish to use a different white balance mode, specify -w. For example, to use
+	the camera white balance, specify -w1 (in my experience, it's often not very helpful):
+	
+\begin{lstlisting}[language=bash]
+	convmlv -i -c -w1 footage.mlv #30 AWB samples.
+\end{lstlisting}
+	
+	If you do not wish to balance the image at all, specify -w2. This will make for a crappy image if you don't balance it yourself later!\\
+	
+	When using AWB, what balance.py does is average the white balance of ~15 frames, spread evenly
+	throughout the footage, then apply the averaged balance to the entire shot. You can change the amount of samples that it will try to 
+	average the white balance using with the -A option, for speed vs. accuracy:
+	
+\begin{lstlisting}[language=bash]
+	convmlv -i -c -A30 footage.mlv #30 AWB samples.
+\end{lstlisting}
+
+\section{Features}
+	\subsection{Dual ISO}
+		convmlv is capable of processing Dual ISO footage! Simply specify -u.
+	
+	\subsection{Badpixels}
+		On some cameras, focus pixel issues are rampant. To fix it, simply specify -b! For Dual ISO footage, this is not always totally
+		effective; the issue is being worked on!
+	
+	\subsection{Darkframe Subtraction}
+		In reducing noise, you can do a very sneaky technique called darkframe subtraction. It's very simple:
+		
+		\begin{itemize}
+			\item Dark Footage: With your lens cap on, using the same settings as your footage, take ~5 seconds of RAW footage.
+			\item Use Dark Footage: Specify -F, then the path to the dark footage, to automatically average the footage + reduce noise! Example:
+\begin{lstlisting}[language=bash]
+	convmlv -i -c -F./dark.mlv footage.mlv #30 AWB samples.
+\end{lstlisting}
+		\end{itemize}
+		
+		For a decent speedup when batch processing, you are able to \textbf{preaverage} your dark footage. Use mlv-dump to do this, making
+		sure to save the output file with the .darkframe extension (I'll explain why in a moment). Example:
+		
+\begin{lstlisting}[language=bash]
+	./mlv_dump -o 1600iso.darkframe -a dark.mlv
+	#./mlv_dump -o outputfile.darkframe -a darkmlv.mlv
+\end{lstlisting}
+		
+		To use the averaged file as an averaged file, make sure it has the .darkframe extension, and then just specify it in the -F path. In
+		this way, you're able to build up a library of sorts at different ISOs! Example:
+		
+\begin{lstlisting}[language=bash]
+	convmlv -i -c -F./1600iso.darkframe footage.mlv
+\end{lstlisting}
+	
+	\subsection{Applying LUTs}
+		Using convmlv, you're able to apply LUTs to images and movies! EXR sequences and image proxies don't work, and images
+		in general are slow to apply, but otherwise it works fast and fine with the option -l, then the path to the LUT! Example:
+		
+\begin{lstlisting}[language=bash]
+	convmlv -m -l./expensiveLUT.cube footage.mlv
+\end{lstlisting}
+	
+	\subsection{Custom Paths}
+		If you want to use a custom path for any of the manual dependencies, you can. This is the first section of options when you
+		specify 'convmlv -h'. Additionally you can redefine the output directory, which defaults to raw-conv. The
+		directory will then automatically be created for you. For example:
+		
+\begin{lstlisting}[language=bash]
+	convmlv -i -c -d3 -o./differentoutdir footage.mlv
+\end{lstlisting}
+
+\section{Misc Considerations}
+	convmlv is multithreaded; you can redefine the number of processes in use from a default of 8 using -T followed by an integer.\\
+	
+	Batch processing files can be done with a *. For example, to process all .MLV files in a directory:
+	
+\begin{lstlisting}[language=bash]
+	convmlv -i -c *.MLV
+\end{lstlisting}
+	
+	If you have any feedback or feature requests, I'd be happy to hear it! Just reply to the thread at 
+	\url{http://www.magiclantern.fm/forum/index.php?topic=16799.0}, or PM me on the forums, or write a comment in the repository!
+
+\end{document}

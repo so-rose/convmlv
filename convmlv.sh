@@ -93,11 +93,11 @@ cat << EOF
 Usage:
 	$(echo -e "\033[1m./convmlv.sh\033[0m [OPTIONS] \033[2mmlv_files\033[0m")
 	
-	
 INFO:
 	A script allowing you to convert .MLV, .RAW, or a folder with a DNG sequence into a sequence/movie with optional proxies. Images
 	are auto compressed. Many useful options are exposed, including formats (EXR by default).
 	
+$(echo -e "VERSION: ${VERSION}")
 	
 DEPENDENCIES: If you don't use a feature, you don't need the dependency, though it's best to download them all.
 	-mlv_dump: For DNG extraction from MLV. http://www.magiclantern.fm/forum/index.php?topic=7122.0
@@ -108,9 +108,6 @@ DEPENDENCIES: If you don't use a feature, you don't need the dependency, though 
 	-ImageMagick: Used for making proxy sequence.
 	-Python 3 + libs: Used for auto white balance.
 	-exiftool: Used in mlv2badpixels.sh.
-	
-	
-$(echo -e "VERSION: ${VERSION}")
 
 
 OPTIONS, BASIC:

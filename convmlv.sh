@@ -1,5 +1,10 @@
 #!/bin/bash
 
+#EXPERIMENT:
+#~ ../../mlv_dump -o test/test 700D_mv1080_1728x1158.MLV --dng --no-cs
+#~ readarray -t y <<<`../../mlv_dump -v -m 700D_mv1080_1728x1158.MLV | grep 'Gain [RGB]' | sed 's/[[:alpha:] ]*:   //' | cut -d$'\n' -f1-3`
+
+
 #~ The MIT License (MIT)
 
 #~ Copyright (c) 2016 Sofus Rose
@@ -23,7 +28,7 @@
 #~ SOFTWARE.
 
 #BASIC VARS
-VERSION="1.7.2" #Version string.
+VERSION="1.8.0" #Version string.
 THREADS=8
 
 #DEPENDENCIES
@@ -58,7 +63,8 @@ HIGHLIGHT_MODE="0"
 PROXY_SCALE="75%"
 DEMO_MODE="1"
 GAMMA="1 1"
-DEPTH="-4"
+SPACE="0" #Color Space. Correlates to Gamma.
+DEPTH="-W -6"
 DEPTH_OUT="-depth 16"
 NOISE_REDUC=""
 FOUR_COLOR=""
@@ -70,6 +76,7 @@ BADPIXELS=""
 BADPIXEL_PATH=""
 isBP=false
 DARKFRAME=""
+SETTINGS_OUTPUT=false
 
 #White Balance
 WHITE=""
@@ -157,7 +164,7 @@ OPTIONS, RAW DEVELOPMENT:
 	-n[int]   NOISE_REDUC - This is the threshold of wavelet denoising - specify to use.
 	  --> Use -n<number>. Defaults to no denoising. 150 tends to be a good setting; 350 starts to look strange.
 	
-	-g[0:4]   GAMMA - This is a modal gamma curve that is applied to the image. 0 is default.
+	-g[0:4]   SPACE - This is output color space. 0 is default.
 	  --> Use -g<mode> (no space). 0: Linear. 1: 2.2 (Adobe RGB). 2: 1.8 (ProPhoto RGB). 3: sRGB. 4: BT.709.
 	
 	-S   SHALLOW - Specifying this option will create an 8-bit output instead of a 16-bit output.
@@ -184,7 +191,7 @@ OPTIONS, FEATURES:
 	-b   BADPIXELS - Fix focus pixels issue using dfort's script.
 	  --> His file can be found at https://bitbucket.org/daniel_fort/ml-focus-pixels/src.
 	
-	-a<path>   BADPIXEL_PATH - Use, appending to the generated one, your own .badpixels file. REQUIRES -b.
+	-a<path>   BADPIXEL_PATH - Use, appending to the generated one, your own .badpixels file.
 	  --> Use -a<path> (no space). How to: http://www.dl-c.com/board/viewtopic.php?f=4&t=686
 	
 	-F<path>   DARKFRAME - This is the path to the dark frame MLV, for noise reduction.
@@ -193,7 +200,9 @@ OPTIONS, FEATURES:
 	  --> If the file extension is '.darkframe', the file will be used as the preaveraged dark frame.
 	
 	
-OPTIONS, DEPENDENCIES:
+OPTIONS, INFO:
+	-e   Output MLV settings.
+
 	-K   Debian Package Deps - Lists dependecies. Works with apt-get on Debian; should be similar elsewhere.
 	  --> No operations will be done.
 	  --> Example: sudo apt-get install $ (./convmlv -K)
@@ -210,6 +219,7 @@ EOF
 
 mkdirS() {
 	path=$1
+	cont=false
 		
 	if [ -d $path ]; then
 		while true; do
@@ -217,7 +227,7 @@ mkdirS() {
 			case $yn in
 				[Yy]* ) echo -e ""; rm -rf $path; mkdir -p $path >/dev/null 2>/dev/null; break
 				;;
-				[Nn]* ) echo -e "\n\e[0;31m\e[1mDirectory ${path} won't be created.\e[0m\n"; exit 0
+				[Nn]* ) echo -e "\n\e[0;31m\e[1mDirectory ${path} won't be created.\e[0m\n"; cont=true; break
 				;;
 				* ) echo -e "\e[0;31m\e[1mPlease answer yes or no.\e[0m\n"
 				;;
@@ -227,18 +237,35 @@ mkdirS() {
 		mkdir -p $path >/dev/null 2>/dev/null
 	fi
 	
+	if [ $cont == true ]; then 
+		continue
+	fi
+	
 }
 
 parseArgs() { #Fixing this would be difficult.
-	if [ `echo ${ARG} | cut -c1-1` = "-" ]; then
-		if [ `echo ${ARG} | cut -c2-2` = "H" ]; then
-			HIGHLIGHT_MODE=`echo ${ARG} | cut -c3-3`
+	if [ ${ARG} == "-e" ]; then #This very special arguments would fuck everything up if left to roam free...
+		SETTINGS_OUTPUT=true
+		let ARGNUM--
+		continue
+	fi
+	if [ `echo "${ARG}" | cut -c1-1` = "-" ]; then
+		if [ `echo "${ARG}" | cut -c2-2` = "H" ]; then
+			HIGHLIGHT_MODE=`echo "${ARG}" | cut -c3-3`
 			let ARGNUM--
 		fi
-		if [ `echo ${ARG} | cut -c2-2` = "s" ]; then
-			PROXY_SCALE=`echo ${ARG} | cut -c3-${#ARG}`
+		if [ `echo "${ARG}" | cut -c2-2` = "s" ]; then
+			PROXY_SCALE=`echo "${ARG}" | cut -c3-${#ARG} >/dev/null 2>/dev/null` #Might error. We'll check, no worries.
+			if [ -z $PROXY_SCALE ]; then
+				echo -e "\e[0;31m\e[1mNo proxy scale set!\e[0m\n"
+				exit 1
+			fi
 			let ARGNUM--
 		fi
+		#~ if [ `echo "${ARG}" | cut -c2-2` = "e" ]; then
+			#~ SETTINGS_OUTPUT=true
+			#~ let ARGNUM--
+		#~ fi
 		if [ `echo ${ARG} | cut -c2-2` = "u" ]; then
 			DUAL_ISO=true
 			let ARGNUM--
@@ -352,18 +379,18 @@ parseArgs() { #Fixing this would be difficult.
 		if [ `echo ${ARG} | cut -c2-2` = "g" ]; then
 			mode=`echo ${ARG} | cut -c3-3`
 			case ${mode} in
-				"0") GAMMA="1 1"
+				"0") GAMMA="1 1"; SPACE="0"
 				;;
-				"1") GAMMA="2.2 0"
+				"1") GAMMA="2.2 0"; SPACE="2"
 				;;
-				"2") GAMMA="1.8 0"
+				"2") GAMMA="1.8 0"; SPACE="4"
 				;;
-				"3") GAMMA="2.4 12.9"
+				"3") GAMMA="2.4 12.9"; SPACE="1"
 				;;
-				"4") GAMMA="2.222 4.5"
+				"4") GAMMA="2.222 4.5"; SPACE="0"
 				;;
 			esac
-		
+			
 			let ARGNUM--
 		fi
 		if [ `echo ${ARG} | cut -c2-2` = "S" ]; then
@@ -433,6 +460,27 @@ checkDeps() {
 			exit 1
 		fi
 		
+		if [ $(echo $(wc -c ${ARG} | cut -d " " -f1) / 1000 | bc) -lt 1000 ] && [ ! -d $ARG ]; then #Check that the file is not too small.
+			cont=false
+			while true; do
+				read -p "${ARG} is unusually small at $(wc -c ${ARG})KB. Continue, skip, or remove? [c/s/r] " csr
+				case $ysr in
+					[Cc]* ) "\n\e[0;31m\e[1mContinuing.\e[0m\n"; break
+					;;
+					[Ss]* ) echo -e "\n\e[0;31m\e[1mSkipping.\e[0m\n"; cont=true; break
+					;;
+					[Rr]* ) echo -e "\n\e[0;31m\e[1mRemoving ${ARG}.\e[0m\n"; cont=true; rm $ARG; break
+					;;
+					* ) echo -e "\e[0;31m\e[1mPlease answer continue, skip, or remove.\e[0m\n"
+					;;
+				esac
+			done
+			
+			if [ $cont == true ]; then
+				continue
+			fi
+		fi
+		
 		if [ ! -f $DARKFRAME ] && [ $DARKFRAME != "" ]; then
 			echo -e "\e[0;31m\e[1mDarkframe MLV ${DARKFRAME} not found!\e[0m\n"
 			exit 1
@@ -465,13 +513,36 @@ if [ $# == 0 ]; then
 fi
 
 ARGNUM=$#
-
 for ARG in $*; do
 #Evaluate command line arguments. ARGNUM decrements to keep track of how many files there are to process.
 	parseArgs # <-- Has a continue statement inside of it if we haven't reached the output.
-	
 #Check that things exist.
 	checkDeps
+	
+#The Very Basics
+	BASE="$(basename "$ARG")"
+	EXT="${BASE##*.}"
+	TRUNC_ARG="${BASE%.*}"
+	
+#Potentially Print Settings
+	if [ $SETTINGS_OUTPUT == true ]; then
+		if [ $EXT == "MLV" ] || [ $EXT == "mlv" ]; then
+			# Read the header for interesting settings :) .
+			FPS=`${MLV_DUMP} -v -m ${ARG} | grep FPS | awk 'FNR == 1 {print $3}'`
+			
+			FRAMES=`${MLV_DUMP} -v -m ${ARG} | grep 'Frames Video' | sed 's/[[:alpha:] ]*: //' | cut -d$'\n' -f1`
+			ISO=`${MLV_DUMP} -v -m ${ARG} | grep 'ISO' | sed 's/[[:alpha:] ]*:        //' | cut -d$'\n' -f2`
+			APERTURE=`${MLV_DUMP} -v -m ${ARG} | grep 'Aperture' | sed 's/[[:alpha:] ]*:    //' | cut -d$'\n' -f1`
+			LEN_FOCAL=`${MLV_DUMP} -v -m ${ARG} | grep 'Focal Len' | sed 's/[[:alpha:] ]*:   //' | cut -d$'\n' -f1`
+			SHUTTER=`${MLV_DUMP} -v -m ${ARG} | grep 'Shutter' | sed 's/[[:alpha:] ]*:   //' | grep -oP '\(\K[^)]+' |  cut -d$'\n' -f1`
+			
+			echo -e "\n\e[1m\e[0;32m\e[1mFile\e[0m\e[0m: ${ARG}\n"
+			echo -e "\e[1mFPS\e[0m: ${FPS}\n\e[1mFrames\e[0m: ${FRAMES}\n\e[1mISO\e[0m: ${ISO}\n\e[1mAperture\e[0m: ${APERTURE}\n\e[1mFocal Length\e[0m: ${LEN_FOCAL}\n\e[1mShutter Speed\e[0m: ${SHUTTER} sec"
+			continue
+		else
+			echo -e "Cannot print settings from ${ARG}; it's not an MLV file!"
+		fi
+	fi
 	
 #List remaining files to process.
 	remFiles=${@:`echo "$# - ($ARGNUM - 1)" | bc`:$#}
@@ -499,10 +570,6 @@ for ARG in $*; do
 		mkdir -p $OUTDIR #NO RISKS. WE REMEMBER THE LUT.py. RIP.
 		isOutGen=true
 	fi
-		
-	BASE="$(basename "$ARG")"
-	EXT="${BASE##*.}"
-	TRUNC_ARG="${BASE%.*}"
 	
 	FILE="${OUTDIR}/${TRUNC_ARG}"
 	
@@ -526,6 +593,7 @@ for ARG in $*; do
 		
 		if [ ! -z $BADPIXEL_PATH ]; then
 			if [ -f "${TMP}/${bad_name}" ]; then
+				echo -e "\e[1m${TRUNC_ARG}:\e[0m Concatenating with specified badpixels file...\n"
 				mv "${TMP}/${bad_name}" "${TMP}/bp_gen"
 				cp $BADPIXEL_PATH "${TMP}/bp_imp"
 				
@@ -535,6 +603,10 @@ for ARG in $*; do
 			fi
 		fi
 		
+		BADPIXELS="-P ${gen_bad}"
+	elif [ ! -z $BADPIXEL_PATH ]; then
+		echo -e "\e[1m${TRUNC_ARG}:\e[0m Using specified badpixels file...\n"
+		cp $BADPIXEL_PATH "${TMP}/${bad_name}"
 		BADPIXELS="-P ${gen_bad}"
 	fi
 	
@@ -558,6 +630,10 @@ for ARG in $*; do
 	
 #Dump to/use DNG sequence, perhaps subtracting darkframe.
 	if [ -d $ARG ]; then
+		if [ $SETTINGS_OUTPUT == true ]; then
+			echo -e "\e[0;31m\e[1mFile ${ARG} is not an MLV file - cannot output settings!\e[0m"
+		fi
+		
 		echo -e "\e[1m${TRUNC_ARG}:\e[0m Using specified folder of RAW sequences...\n" #Use prespecified DNG sequence.
 		find $ARG -iname "*.dng" | xargs -I {} cp {} $TMP #Copying DNGs to TMP.
 		
@@ -577,7 +653,17 @@ for ARG in $*; do
 		fi
 		
 		if [ $EXT == "MLV" ] || [ $EXT == "mlv" ]; then
+			# Read the header for interesting settings :) .
 			FPS=`${MLV_DUMP} -v -m ${ARG} | grep FPS | awk 'FNR == 1 {print $3}'`
+			
+			FRAMES=`${MLV_DUMP} -v -m ${ARG} | grep 'Frames Video' | sed 's/[[:alpha:] ]*: //' | cut -d$'\n' -f1`
+			ISO=`${MLV_DUMP} -v -m ${ARG} | grep 'ISO' | sed 's/[[:alpha:] ]*:        //' | cut -d$'\n' -f2`
+			APERTURE=`${MLV_DUMP} -v -m ${ARG} | grep 'Aperture' | sed 's/[[:alpha:] ]*:    //' | cut -d$'\n' -f1`
+			LEN_FOCAL=`${MLV_DUMP} -v -m ${ARG} | grep 'Focal Len' | sed 's/[[:alpha:] ]*:   //' | cut -d$'\n' -f1`
+			SHUTTER=`${MLV_DUMP} -v -m ${ARG} | grep 'Shutter' | sed 's/[[:alpha:] ]*:   //' | grep -oP '\(\K[^)]+' |  cut -d$'\n' -f1`
+			
+			echo -e "FPS: ${FPS}\nFrames: ${FRAMES}\nISO: ${ISO}\nAperture: ${APERTURE}\nFocal Length: ${LEN_FOCAL}\nShutter Speed: ${SHUTTER}" > $FILE/settings.txt
+			
 			$MLV_DUMP $ARG $DARK_PROC -o "${TMP}/${TRUNC_ARG}_" --dng $CHROMA_SMOOTH >/dev/null 2>/dev/null
 		elif [ $EXT == "RAW" ] || [ $EXT == "raw" ]; then
 			echo -e $rawStat
@@ -586,6 +672,8 @@ for ARG in $*; do
 			
 		FRAMES=$(find ${TMP} -name "*.dng" | wc -l)
 	fi
+	
+	BLACK_LEVEL=$(exiftool -BlackLevel -s -s -s ${TMP}/${TRUNC_ARG}_000000.dng) #Use the first DNG to get the correct black level.
 	
 	
 #Dual ISO Conversion
@@ -599,7 +687,7 @@ for ARG in $*; do
 		inc_iso() { #6 args: {} $CR_HDR $TMP $FRAMES $oldFiles $CHROMA_SMOOTH. {} is a path. Progress is thread safe. Experiment gone right :).
 			count=$(echo $(echo $1 | rev | cut -d "_" -f 1 | rev | cut -d "." -f 1 | grep "[0-9]") | bc) #Get count from filename.
 			
-			$2 $1 $CHROMA_SMOOTH >/dev/null 2>/dev/null #The LQ option, --mean23, is completely unusable in my opinion.
+			$2 $1 $6 #The LQ option, --mean23, is completely unusable in my opinion.
 			
 			name=$(basename "$1")
 			mv "${3}/${name%.*}.dng" $5 #Move away original dngs.
@@ -610,7 +698,7 @@ for ARG in $*; do
 		
 		export -f inc_iso #Must expose function to subprocess.
 		
-		find $TMP -name "*.dng" -print0 | sort -z | xargs -0 -I {} -P $THREADS -n 1 bash -c "inc_iso {} $CR_HDR $TMP $FRAMES $oldFiles $CHROMA_SMOOTH"
+		find $TMP -name "*.dng" -print0 | sort -z | xargs -0 -I {} -P $THREADS -n 1 bash -x -c "inc_iso {} $CR_HDR $TMP $FRAMES $oldFiles $CHROMA_SMOOTH"
 		echo -e "\n"
 	fi
 
@@ -633,7 +721,7 @@ for ARG in $*; do
 		trap "rm -rf ${FILE}; exit 1" INT
 		for file in $TMP/*.dng; do 
 			if [ `echo "(${i}+1) % ${n}" | bc` -eq 0 ]; then
-				dcraw -q 0 $BADPIXELS -r 1 1 1 1 -g $GAMMA -o 0 -T "${file}"
+				dcraw -q 0 $BADPIXELS -r 1 1 1 1 -g $GAMMA -o $SPACE -T "${file}"
 				name=$(basename "$file")
 				mv "$TMP/${name%.*}.tiff" $toBal #TIFF MOVEMENT. We use TIFFs here because it's easy for dcraw and Python.
 				let t++
@@ -676,7 +764,7 @@ for ARG in $*; do
 		
 	dcrawOpt() { #Find, develop, and splay raw DNG data as ppm, ready to be processed.
 		find "${TMP}" -maxdepth 1 -iname "*.dng" -print0 | sort -z | xargs -0 \
-			dcraw -c -q $DEMO_MODE $FOUR_COLOR $BADPIXELS $WHITE -H $HIGHLIGHT_MODE -g $GAMMA $NOISE_REDUC -o 0 $DEPTH
+			dcraw -c -q $DEMO_MODE $FOUR_COLOR -k $BLACK_LEVEL $BADPIXELS $WHITE -H $HIGHLIGHT_MODE -g $GAMMA $NOISE_REDUC -o $SPACE $DEPTH
 	} #Is prepared to pipe all the files in TMP outwards.
 	
 	dcrawImg() { #Find and splay image sequence data as ppm, ready to be processed by ffmpeg.
@@ -716,15 +804,15 @@ for ARG in $*; do
 		#~ cat $PIPE | tr 'e' 'a' & echo 'hello' | tee $PIPE | tr 'e' 'o' #The magic of simultaneous execution ^_^
 	}
 	
-	img_par() { #Takes 17 arguments: {} $DEMO_MODE $FOUR_COLOR $BADPIXELS $WHITE $HIGHLIGHT_MODE $GAMMA $NOISE_REDUC $DEPTH $SEQ $TRUNC_ARG $IMG_FMT $FRAMES $DEPTH_OUT $COMPRESS $isJPG $PROXY_SCALE $PROXY
+	img_par() { #Takes 20 arguments: {} $DEMO_MODE $FOUR_COLOR $BADPIXELS $WHITE $HIGHLIGHT_MODE $GAMMA $NOISE_REDUC $DEPTH $SEQ $TRUNC_ARG $IMG_FMT $FRAMES $DEPTH_OUT $COMPRESS $isJPG $PROXY_SCALE $PROXY $BLACK_LEVEL $SPACE
 		count=$(echo $(echo $1 | rev | cut -d "_" -f 1 | rev | cut -d "." -f 1 | grep "[0-9]") | bc) #Instead of count from file, count from name!
 		if [ ${16} == true ]; then
-			dcraw -c -q $2 $3 $4 $5 -H $6 -g $7 $8 -o 0 $9 $1 | \
+			dcraw -c -q $2 $3 $4 $5 -H $6 -k ${19} -g $7 $8 -o ${20} $9 $1 | \
 				tee >(convert ${14} - ${15} $(printf "${10}/${11}_%06d.${12}" ${count})) | \
 					convert - -quality 90 -resize ${17} $(printf "${18}/${11}_%06d.jpg" ${count})
 			echo -e "\e[2K\rDNG to ${12^^}/JPG: Frame ${count^^}/${13}\c"
 		else
-			dcraw -c -q $2 $3 $4 $5 -H $6 -g $7 $8 -o 0 $9 $1 | \
+			dcraw -c -q $2 $3 $4 $5 -H $6 -k ${19} -g $7 $8 -o ${20} $9 $1 | \
 				convert ${14} - ${15} $(printf "${10}/${11}_%06d.${12}" ${count})
 			echo -e "\e[2K\rDNG to ${12^^}: Frame ${count^^}/${13}\c"
 		fi
@@ -765,7 +853,7 @@ for ARG in $*; do
 #Convert all the actual DNGs to IMG_FMT, in parallel.
 		find "${TMP}" -maxdepth 1 -name '*.dng' -print0 | sort -z | xargs -0 -I {} -P $THREADS -n 1 \
 			bash -c "img_par {} '$DEMO_MODE' '$FOUR_COLOR' '$BADPIXELS' '$WHITE' '$HIGHLIGHT_MODE' '$GAMMA' '$NOISE_REDUC' '$DEPTH' \
-						'$SEQ' '$TRUNC_ARG' '$IMG_FMT' '$FRAMES' '$DEPTH_OUT' '$COMPRESS' '$isJPG' '$PROXY_SCALE' '$PROXY' \
+						'$SEQ' '$TRUNC_ARG' '$IMG_FMT' '$FRAMES' '$DEPTH_OUT' '$COMPRESS' '$isJPG' '$PROXY_SCALE' '$PROXY' '$BLACK_LEVEL' '$SPACE'\
 					"
 		
 		if [ $isJPG == true ]; then #Make it print "Frame $FRAMES / $FRAMES" as the last output :).

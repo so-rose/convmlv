@@ -17,7 +17,7 @@ INFO:
 	A script allowing you to convert .MLV, .RAW, or a folder with a DNG sequence into a sequence/movie with optional proxies. Images
 	are auto compressed. Many useful options are exposed, including formats (EXR by default).
 	
-VERSION: 1.8.0
+VERSION: 1.8.1
 	
 DEPENDENCIES: If you don't use a feature, you don't need the dependency, though it's best to download them all.
 	-mlv_dump: For DNG extraction from MLV. http://www.magiclantern.fm/forum/index.php?topic=7122.0
@@ -61,7 +61,12 @@ OPTIONS, OUTPUT:
 	  --> Use -s<percentage>% (no space). 50% is default.
 	
 	-k   KEEP_DNGS - Specify if you want to keep the DNG files.
-	  --> Besides testing, this makes the script a glorified mlv_dump...
+	  --> If you run convmlv on the dng_<name> folder, you will reuse those DNGs - no need to redevelop!
+	  
+	-E<range>   FRAME_RANGE - Specify to process only this frame range.
+	  --> DNGs will still all be generated. Use -k to reuse a previous iteration to get past this!
+	  --> <range> must be written as <start>-<end>, indexed from 0 to (# of frames - 1).
+	  --> If you write a single number, only that frame will be developed.
 	
 	
 OPTIONS, RAW DEVELOPMENT:

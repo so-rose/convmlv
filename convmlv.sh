@@ -28,7 +28,7 @@
 #~ SOFTWARE.
 
 #BASIC VARS
-VERSION="1.8.0" #Version string.
+VERSION="1.8.1" #Version string.
 THREADS=8
 
 #DEPENDENCIES
@@ -58,6 +58,12 @@ isJPG=false
 isH264=false
 KEEP_DNGS=false
 
+#FRAME RANGE
+FRAME_RANGE="" #UPDATED LATER WHEN FRAME # IS AVAILABLE.
+FRAME_START="1"
+FRAME_END=""
+isFR=true
+
 #RAW DEVELOPOMENT
 HIGHLIGHT_MODE="0"
 PROXY_SCALE="75%"
@@ -80,8 +86,8 @@ SETTINGS_OUTPUT=false
 
 #White Balance
 WHITE=""
-GEN_WHITE=true
-CAMERA_WB=false
+GEN_WHITE=false
+CAMERA_WB=true
 WHITE_SPD=15
 
 #LUT
@@ -141,7 +147,12 @@ OPTIONS, OUTPUT:
 	  --> Use -s<percentage>% (no space). 50% is default.
 	
 	-k   KEEP_DNGS - Specify if you want to keep the DNG files.
-	  --> Besides testing, this makes the script a glorified mlv_dump...
+	  --> If you run convmlv on the dng_<name> folder, you will reuse those DNGs - no need to redevelop!
+	  
+	-E<range>   FRAME_RANGE - Specify to process only this frame range.
+	  --> DNGs will still all be generated. Use -k to reuse a previous iteration to get past this!
+	  --> <range> must be written as <start>-<end>, indexed from 0 to (# of frames - 1).
+	  --> If you write a single number, only that frame will be developed.
 	
 	
 OPTIONS, RAW DEVELOPMENT:
@@ -216,6 +227,7 @@ EOF
 
 mkdirS() {
 	path=$1
+	cleanup=$2
 	cont=false
 		
 	if [ -d $path ]; then
@@ -224,7 +236,7 @@ mkdirS() {
 			case $yn in
 				[Yy]* ) echo -e ""; rm -rf $path; mkdir -p $path >/dev/null 2>/dev/null; break
 				;;
-				[Nn]* ) echo -e "\n\e[0;31m\e[1mDirectory ${path} won't be created.\e[0m\n"; cont=true; break
+				[Nn]* ) echo -e "\n\e[0;31m\e[1mDirectory ${path} won't be created.\e[0m\n"; cont=true; `$cleanup`; break
 				;;
 				* ) echo -e "\e[0;31m\e[1mPlease answer yes or no.\e[0m\n"
 				;;
@@ -265,6 +277,14 @@ parseArgs() { #Fixing this would be difficult.
 		#~ fi
 		if [ `echo ${ARG} | cut -c2-2` = "u" ]; then
 			DUAL_ISO=true
+			let ARGNUM--
+		fi
+		if [ `echo ${ARG} | cut -c2-2` = "E" ]; then
+			base=$(echo ${ARG} | cut -c3-${#ARG})
+			FRAME_RANGE="$(echo "$(echo $base | cut -d"-" -f1) + 1" | bc)-$(echo "$(echo $base | cut -d"-" -f2) + 1" | bc)"
+			FRAME_START=$(echo ${FRAME_RANGE} | cut -d"-" -f1)
+			FRAME_END=$(echo ${FRAME_RANGE} | cut -d"-" -f2)
+			isFR=false
 			let ARGNUM--
 		fi
 		if [ `echo ${ARG} | cut -c2-2` = "F" ]; then
@@ -402,7 +422,7 @@ parseArgs() { #Fixing this would be difficult.
 				;;
 				"1") CAMERA_WB=true; GEN_WHITE=false;
 				;;
-				"2") WHITE="-r 1 1 1 1"; CAMERA_WB=true; GEN_WHITE=false
+				"2") WHITE="-r 1 1 1 1"; CAMERA_WB=false; GEN_WHITE=false
 				;;
 			esac
 		
@@ -457,7 +477,7 @@ checkDeps() {
 			exit 1
 		fi
 		
-		if [ $(echo $(wc -c ${ARG} | cut -d " " -f1) / 1000 | bc) -lt 1000 ] && [ ! -d $ARG ]; then #Check that the file is not too small.
+		if [ ! -d $ARG ] && [ $(echo $(wc -c ${ARG} | cut -d " " -f1) / 1000 | bc) -lt 1000 ]; then #Check that the file is not too small.
 			cont=false
 			while true; do
 				read -p "${ARG} is unusually small at $(wc -c ${ARG})KB. Continue, skip, or remove? [c/s/r] " csr
@@ -520,7 +540,7 @@ for ARG in $*; do
 	BASE="$(basename "$ARG")"
 	EXT="${BASE##*.}"
 	TRUNC_ARG="${BASE%.*}"
-	
+
 #Potentially Print Settings
 	if [ $SETTINGS_OUTPUT == true ]; then
 		if [ $EXT == "MLV" ] || [ $EXT == "mlv" ]; then
@@ -534,7 +554,7 @@ for ARG in $*; do
 			SHUTTER=`${MLV_DUMP} -v -m ${ARG} | grep 'Shutter' | sed 's/[[:alpha:] ]*:   //' | grep -oP '\(\K[^)]+' |  cut -d$'\n' -f1`
 			
 			echo -e "\n\e[1m\e[0;32m\e[1mFile\e[0m\e[0m: ${ARG}\n"
-			echo -e "\e[1mFPS\e[0m: ${FPS}\n\e[1mFrames\e[0m: ${FRAMES}\n\e[1mISO\e[0m: ${ISO}\n\e[1mAperture\e[0m: ${APERTURE}\n\e[1mFocal Length\e[0m: ${LEN_FOCAL}\n\e[1mShutter Speed\e[0m: ${SHUTTER} sec"
+			echo -e "\e[1mFPS\e[0m: ${FPS}\n\e[1mFrames\e[0m: ${FRAMES}\n\e[1mISO\e[0m: ${ISO}\n\e[1mAperture\e[0m: ${APERTURE}\n\e[1mFocalLength\e[0m: ${LEN_FOCAL}\n\e[1mShutterSpeed\e[0m: ${SHUTTER} sec"
 			continue
 		else
 			echo -e "Cannot print settings from ${ARG}; it's not an MLV file!"
@@ -569,14 +589,121 @@ for ARG in $*; do
 	fi
 	
 	FILE="${OUTDIR}/${TRUNC_ARG}"
-	
 	TMP="${FILE}/tmp_${TRUNC_ARG}"
+#Manage DNG argument/Create FILE and TMP.
+	DEVELOP=true
+	if [ -d $ARG ] && [ `basename ${ARG} | cut -c1-3` == "dng" ] && [ -f "${ARG}/../settings.txt" ]; then #If we're reusing a dng sequence, copy over before we delete the original.
+		echo -e "\e[1m${TRUNC_ARG}:\e[0m Moving DNGs from previous run...\n" #Use prespecified DNG sequence.
+		
+		DNG_LOC=${OUTDIR}/tmp_reused
+		mkdir -p ${OUTDIR}/tmp_reused
+		
+		find $ARG -iname "*.dng" | xargs -I {} mv {} $DNG_LOC #Copying DNGs to temporary location.
+		
+		FPS=`cat ${ARG}/../settings.txt | grep "FPS" | cut -d $" " -f2` #Grab FPS from previous run.
+		FRAMES=`cat ${ARG}/../settings.txt | grep "Frames" | cut -d $" " -f2` #Grab FRAMES from previous run.
+		cp "${ARG}/../settings.txt" $DNG_LOC
+		
+		TRUNC_ARG=`echo $TRUNC_ARG | cut -c5-${#TRUNC_ARG}`
+		oldARG=$ARG
+		ARG=$(dirname $ARG)/${TRUNC_ARG}
+		BASE="$(basename "$ARG")"
+		EXT="${BASE##*.}"		
+		
+		dngLocClean() {
+			find $DNG_LOC -iname "*.dng" | xargs -I {} mv {} $oldARG
+			rm -rf $DNG_LOC
+		}
+		
+		FILE="${OUTDIR}/${TRUNC_ARG}"
+		TMP="${FILE}/tmp_${TRUNC_ARG}" #Remove dng_ from ARG by redefining basic constants. Ready to go!
+		
+		mkdirS $FILE dngLocClean
+		mkdirS $TMP #Make the folders.
+		
+		find $DNG_LOC -iname "*.dng" | xargs -I {} mv {} $TMP #Moving files to where they need to go.
+		cp "${DNG_LOC}/settings.txt" $FILE
+		
+		DEVELOP=false
+		rm -r $DNG_LOC
+	elif [ -d $ARG ]; then #If it's a DNG sequence, but not a reused one.
+		mkdirS $FILE
+		mkdirS $TMP
+		
+		FPS=24 #Set it to a safe default.
+		
+		echo -e "\e[1m${TRUNC_ARG}:\e[0m Using specified folder of RAW sequences...\n" #Use prespecified DNG sequence.
+		find $ARG -iname "*.dng" | xargs -I {} cp {} $TMP #Copying DNGs to TMP.
+		
+		FRAMES=$(find ${TMP} -name "*.dng" | wc -l)
+	else
+		mkdirS $FILE
+		mkdirS $TMP
+	fi
 	
-	mkdirS $FILE
-	mkdirS $TMP
+#Darkframe Averaging
+	if [ ! $DARKFRAME == "" ]; then
+		echo -e "\e[1m${TRUNC_ARG}:\e[0m Creating darkframe for subtraction...\n"
+		
+		avgFrame="${TMP}/avg.darkframe" #The path to the averaged darkframe file.
+		
+		darkBase="$(basename "$ARG")"
+		darkExt="${BASE##*.}"
+		
+		if [ darkExt != 'darkframe' ]; then
+			$MLV_DUMP -o "${avgFrame}" -a $DARKFRAME >/dev/null 2>/dev/null
+		else
+			cp $DARKFRAME $avgFrame #Copy the preaveraged frame if the extension is .darkframe.
+		fi
+		
+		DARK_PROC="-s ${avgFrame}"
+	fi
 	
+#Dump to/use DNG sequence, perhaps subtracting darkframe.
+	if [ $DEVELOP == true ]; then
+		echo -e "\e[1m${TRUNC_ARG}:\e[0m Dumping to DNG Sequence...\n"
+				
+		if [ ! $DARKFRAME == "" ] && [ ! $CHROMA_SMOOTH == "--no-cs" ]; then #Just to let the user know that certain features are impossible with RAW.
+			rawStat="*Skipping Darkframe subtraction and Chroma Smoothing for RAW file ${TRUNC_ARG}."
+		elif [ ! $DARKFRAME == "" ]; then
+			rawStat="*Skipping Darkframe subtraction for RAW file ${TRUNC_ARG}."
+		elif [ ! $CHROMA_SMOOTH == "--no-cs" ]; then
+			rawStat="*Skipping Chroma Smoothing for RAW file ${TRUNC_ARG}."
+		else
+			rawStat="\c"
+		fi
+		
+		if [ $EXT == "MLV" ] || [ $EXT == "mlv" ]; then
+			# Read the header for interesting settings :) .
+			FPS=`${MLV_DUMP} -v -m ${ARG} | grep FPS | awk 'FNR == 1 {print $3}'`
+			
+			FRAMES=`${MLV_DUMP} -v -m ${ARG} | grep 'Frames Video' | sed 's/[[:alpha:] ]*: //' | cut -d$'\n' -f1`
+			ISO=`${MLV_DUMP} -v -m ${ARG} | grep 'ISO' | sed 's/[[:alpha:] ]*:        //' | cut -d$'\n' -f2`
+			APERTURE=`${MLV_DUMP} -v -m ${ARG} | grep 'Aperture' | sed 's/[[:alpha:] ]*:    //' | cut -d$'\n' -f1`
+			LEN_FOCAL=`${MLV_DUMP} -v -m ${ARG} | grep 'Focal Len' | sed 's/[[:alpha:] ]*:   //' | cut -d$'\n' -f1`
+			SHUTTER=`${MLV_DUMP} -v -m ${ARG} | grep 'Shutter' | sed 's/[[:alpha:] ]*:   //' | grep -oP '\(\K[^)]+' |  cut -d$'\n' -f1`
+			
+			echo -e "FPS: ${FPS}\nFrames: ${FRAMES}\nISO: ${ISO}\nAperture: ${APERTURE}\nFocalLength: ${LEN_FOCAL}\nShutterSpeed: ${SHUTTER}" > $FILE/settings.txt
+			
+			#Dual ISO might want to do the chroma smoothing.
+			if [ $DUAL_ISO == true ]; then
+				smooth=""
+			else
+				smooth=$CHROMA_SMOOTH
+			fi
+			
+			$MLV_DUMP $ARG $DARK_PROC -o "${TMP}/${TRUNC_ARG}_" --dng $smooth >/dev/null 2>/dev/null
+		elif [ $EXT == "RAW" ] || [ $EXT == "raw" ]; then
+			echo -e $rawStat
+			FPS=`$RAW_DUMP $ARG "${TMP}/${TRUNC_ARG}_" | awk '/FPS/ { print $3; }'` #Run the dump while awking for the FPS.
+		fi
+			
+		FRAMES=$(find ${TMP} -name "*.dng" | wc -l)
+		BLACK_LEVEL=$(exiftool -BlackLevel -s -s -s ${TMP}/${TRUNC_ARG}_$(printf "%06d" $(echo "$FRAME_START - 1" | bc)).dng) #Use the first DNG to get the correct black level.
+	fi	
+
 #Create badpixels file.
-	if [ $isBP == true ]; then
+	if [ $isBP == true ] && [ ! -d $DNG_LOC ]; then
 		echo -e "\e[1m${TRUNC_ARG}:\e[0m Generating badpixels file...\n"
 		
 		bad_name="badpixels_${TRUNC_ARG}.txt"
@@ -607,72 +734,12 @@ for ARG in $*; do
 		BADPIXELS="-P ${gen_bad}"
 	fi
 	
-#Darkframe Averaging
-	if [ ! $DARKFRAME == "" ]; then
-		echo -e "\e[1m${TRUNC_ARG}:\e[0m Creating darkframe for subtraction...\n"
-		
-		avgFrame="${TMP}/avg.darkframe" #The path to the averaged darkframe file.
-		
-		darkBase="$(basename "$ARG")"
-		darkExt="${BASE##*.}"
-		
-		if [ darkExt != 'darkframe' ]; then
-			$MLV_DUMP -o "${avgFrame}" -a $DARKFRAME >/dev/null 2>/dev/null
-		else
-			cp $DARKFRAME $avgFrame #Copy the preaveraged frame if the extension is .darkframe.
-		fi
-		
-		DARK_PROC="-s ${avgFrame}"
+	if [ $isFR == true ]; then #Ensure that FRAME_RANGE is set.
+		FRAME_RANGE="1-${FRAMES}"
+		FRAME_START="0"
+		FRAME_END=$FRAMES
 	fi
-	
-#Dump to/use DNG sequence, perhaps subtracting darkframe.
-	if [ -d $ARG ]; then
-		if [ $SETTINGS_OUTPUT == true ]; then
-			echo -e "\e[0;31m\e[1mFile ${ARG} is not an MLV file - cannot output settings!\e[0m"
-		fi
-		
-		echo -e "\e[1m${TRUNC_ARG}:\e[0m Using specified folder of RAW sequences...\n" #Use prespecified DNG sequence.
-		find $ARG -iname "*.dng" | xargs -I {} cp {} $TMP #Copying DNGs to TMP.
-		
-		FPS=24 #Set FPS just in case.
-		FRAMES=$(find ${TMP} -name "*.dng" | wc -l)
-	else
-		echo -e "\e[1m${TRUNC_ARG}:\e[0m Dumping to DNG Sequence...\n"
-				
-		if [ ! $DARKFRAME == "" ] && [ ! $CHROMA_SMOOTH == "--no-cs" ]; then #Just to let the user know that certain features are impossible with RAW.
-			rawStat="*Skipping Darkframe subtraction and Chroma Smoothing for RAW file ${TRUNC_ARG}."
-		elif [ ! $DARKFRAME == "" ]; then
-			rawStat="*Skipping Darkframe subtraction for RAW file ${TRUNC_ARG}."
-		elif [ ! $CHROMA_SMOOTH == "--no-cs" ]; then
-			rawStat="*Skipping Chroma Smoothing for RAW file ${TRUNC_ARG}."
-		else
-			rawStat="\c"
-		fi
-		
-		if [ $EXT == "MLV" ] || [ $EXT == "mlv" ]; then
-			# Read the header for interesting settings :) .
-			FPS=`${MLV_DUMP} -v -m ${ARG} | grep FPS | awk 'FNR == 1 {print $3}'`
-			
-			FRAMES=`${MLV_DUMP} -v -m ${ARG} | grep 'Frames Video' | sed 's/[[:alpha:] ]*: //' | cut -d$'\n' -f1`
-			ISO=`${MLV_DUMP} -v -m ${ARG} | grep 'ISO' | sed 's/[[:alpha:] ]*:        //' | cut -d$'\n' -f2`
-			APERTURE=`${MLV_DUMP} -v -m ${ARG} | grep 'Aperture' | sed 's/[[:alpha:] ]*:    //' | cut -d$'\n' -f1`
-			LEN_FOCAL=`${MLV_DUMP} -v -m ${ARG} | grep 'Focal Len' | sed 's/[[:alpha:] ]*:   //' | cut -d$'\n' -f1`
-			SHUTTER=`${MLV_DUMP} -v -m ${ARG} | grep 'Shutter' | sed 's/[[:alpha:] ]*:   //' | grep -oP '\(\K[^)]+' |  cut -d$'\n' -f1`
-			
-			echo -e "FPS: ${FPS}\nFrames: ${FRAMES}\nISO: ${ISO}\nAperture: ${APERTURE}\nFocal Length: ${LEN_FOCAL}\nShutter Speed: ${SHUTTER}" > $FILE/settings.txt
-			
-			$MLV_DUMP $ARG $DARK_PROC -o "${TMP}/${TRUNC_ARG}_" --dng $CHROMA_SMOOTH >/dev/null 2>/dev/null
-		elif [ $EXT == "RAW" ] || [ $EXT == "raw" ]; then
-			echo -e $rawStat
-			FPS=`$RAW_DUMP $ARG "${TMP}/${TRUNC_ARG}_" | awk '/FPS/ { print $3; }'` #Run the dump while awking for the FPS.
-		fi
-			
-		FRAMES=$(find ${TMP} -name "*.dng" | wc -l)
-	fi
-	
-	BLACK_LEVEL=$(exiftool -BlackLevel -s -s -s ${TMP}/${TRUNC_ARG}_000000.dng) #Use the first DNG to get the correct black level.
-	
-	
+
 #Dual ISO Conversion
 	if [ $DUAL_ISO == true ]; then
 		echo -e "\e[1m${TRUNC_ARG}:\e[0m Combining Dual ISO...\n"
@@ -681,10 +748,10 @@ for ARG in $*; do
 		oldFiles="${TMP}/orig_dng"
 		mkdirS $oldFiles
 		
-		inc_iso() { #6 args: {} $CR_HDR $TMP $FRAMES $oldFiles $CHROMA_SMOOTH. {} is a path. Progress is thread safe. Experiment gone right :).
-			count=$(echo $(echo $1 | rev | cut -d "_" -f 1 | rev | cut -d "." -f 1 | grep "[0-9]") | bc) #Get count from filename.
+		inc_iso() { #6 args: 1{} 2$CR_HDR 3$TMP 4$FRAMES 5$oldFiles 6$CHROMA_SMOOTH. {} is a path. Progress is thread safe. Experiment gone right :).
+			count=$(echo "$(echo $(echo $1 | rev | cut -d "_" -f 1 | rev | cut -d "." -f 1 | grep "[0-9]") | bc) + 1" | bc) #Get count from filename.
 			
-			$2 $1 $6 #The LQ option, --mean23, is completely unusable in my opinion.
+			$2 $1 $6 >/dev/null 2>/dev/null #The LQ option, --mean23, is completely unusable in my opinion.
 			
 			name=$(basename "$1")
 			mv "${3}/${name%.*}.dng" $5 #Move away original dngs.
@@ -695,9 +762,17 @@ for ARG in $*; do
 		
 		export -f inc_iso #Must expose function to subprocess.
 		
-		find $TMP -name "*.dng" -print0 | sort -z | xargs -0 -I {} -P $THREADS -n 1 bash -x -c "inc_iso {} $CR_HDR $TMP $FRAMES $oldFiles $CHROMA_SMOOTH"
+		find $TMP -maxdepth 1 -name "*.dng" -print0 | sort -z | cut -d '' --complement -f $FRAME_RANGE | tr -d '\n' | xargs -0 -I {} -n 1 mv {} $oldFiles #Move all the others to correct position.
+		find $TMP -maxdepth 1 -name "*.dng" -print0 | sort -z | xargs -0 -I {} -P $THREADS -n 1 bash -c "inc_iso '{}' '$CR_HDR' '$TMP' '$FRAMES' '$oldFiles' '$CHROMA_SMOOTH'"
+		
+		FRAME_RANGE="1-${FRAMES}"
+		
+		BLACK_LEVEL=$(exiftool -BlackLevel -s -s -s ${TMP}/${TRUNC_ARG}_$(printf "%06d" $(echo "$FRAME_START - 1" | bc)).dng) #Use the first DNG to get the correct black level.
+
 		echo -e "\n"
 	fi
+	
+	echo -e "BlackLevel: ${BLACK_LEVEL}" >> $FILE/settings.txt #Black level must now be set.
 
 #Get White Balance correction factor.
 	if [ $GEN_WHITE == true ]; then
@@ -732,10 +807,10 @@ for ARG in $*; do
 		echo -e "Calculating Auto White Balance..."
 		BALANCE=`$BAL $toBal`
 		WHITE="-r ${BALANCE} 1.000000"
-		echo -e "Correction Factor (RGB): ${BALANCE} 1.0\n"
+		echo -e "Correction Factor (RGBG): ${BALANCE} 1.000000\n"
 		
 	elif [ $CAMERA_WB == true ]; then
-		echo -e "Retrieving Camera White Balance..."
+		echo -e "\e[1m${TRUNC_ARG}:\e[0m Retrieving Camera White Balance..."
 		
 		trap "rm -rf ${FILE}; exit 1" INT
 		for file in $TMP/*.dng; do
@@ -744,7 +819,10 @@ for ARG in $*; do
 			break
 		done
 		WHITE="-r ${BALANCE} 1.0"
-		echo -e "Correction Factor (RGB): ${BALANCE} 1.0\n"
+		echo -e "Correction Factor (RGBG): ${BALANCE} 1.000000\n"
+	else
+		echo -e "\e[1m${TRUNC_ARG}:\e[0m Ignoring White Balance..."
+		echo -e "Correction Factor (RGBG): 1.000000 1.000000 1.000000 1.000000\n"
 	fi
 
 #Move .wav.
@@ -760,12 +838,12 @@ for ARG in $*; do
 #DEFINE PROCESSING FUNCTIONS
 		
 	dcrawOpt() { #Find, develop, and splay raw DNG data as ppm, ready to be processed.
-		find "${TMP}" -maxdepth 1 -iname "*.dng" -print0 | sort -z | xargs -0 \
+		find "${TMP}" -maxdepth 1 -iname "*.dng" -print0 | sort -z | cut -d '' -f $FRAME_RANGE | tr -d "\n" | xargs -0 \
 			dcraw -c -q $DEMO_MODE $FOUR_COLOR -k $BLACK_LEVEL $BADPIXELS $WHITE -H $HIGHLIGHT_MODE -g $GAMMA $NOISE_REDUC -o $SPACE $DEPTH
 	} #Is prepared to pipe all the files in TMP outwards.
 	
 	dcrawImg() { #Find and splay image sequence data as ppm, ready to be processed by ffmpeg.
-		find "${SEQ}" -maxdepth 1 -iname "*.${IMG_FMT}" -print0 | sort -z | xargs -0 -I {} convert {} ppm:-
+		find "${SEQ}" -maxdepth 1 -iname "*.${IMG_FMT}" -print0 | sort -z | xargs -0 -I {} convert '{}' ppm:-
 	} #Finds all images, prints to stdout quickly without any operations using convert.
 	
 	mov_main() {
@@ -801,7 +879,7 @@ for ARG in $*; do
 		#~ cat $PIPE | tr 'e' 'a' & echo 'hello' | tee $PIPE | tr 'e' 'o' #The magic of simultaneous execution ^_^
 	}
 	
-	img_par() { #Takes 20 arguments: {} $DEMO_MODE $FOUR_COLOR $BADPIXELS $WHITE $HIGHLIGHT_MODE $GAMMA $NOISE_REDUC $DEPTH $SEQ $TRUNC_ARG $IMG_FMT $FRAMES $DEPTH_OUT $COMPRESS $isJPG $PROXY_SCALE $PROXY $BLACK_LEVEL $SPACE
+	img_par() { #Takes 20 arguments: {} 2$DEMO_MODE 3$FOUR_COLOR 4$BADPIXELS 5$WHITE 6$HIGHLIGHT_MODE 7$GAMMA 8$NOISE_REDUC 9$DEPTH 10$SEQ 11$TRUNC_ARG 12$IMG_FMT 13$FRAMES 14$DEPTH_OUT 15$COMPRESS 16$isJPG $PROXY_SCALE $PROXY $BLACK_LEVEL $SPACE
 		count=$(echo $(echo $1 | rev | cut -d "_" -f 1 | rev | cut -d "." -f 1 | grep "[0-9]") | bc) #Instead of count from file, count from name!
 		if [ ${16} == true ]; then
 			dcraw -c -q $2 $3 $4 $5 -H $6 -k ${19} -g $7 $8 -o ${20} $9 $1 | \
@@ -848,15 +926,15 @@ for ARG in $*; do
 		fi
 
 #Convert all the actual DNGs to IMG_FMT, in parallel.
-		find "${TMP}" -maxdepth 1 -name '*.dng' -print0 | sort -z | xargs -0 -I {} -P $THREADS -n 1 \
-			bash -c "img_par {} '$DEMO_MODE' '$FOUR_COLOR' '$BADPIXELS' '$WHITE' '$HIGHLIGHT_MODE' '$GAMMA' '$NOISE_REDUC' '$DEPTH' \
+		find "${TMP}" -maxdepth 1 -name '*.dng' -print0 | sort -z | cut -d '' -f $FRAME_RANGE | tr -d "\n" | xargs -0 -I {} -P $THREADS -n 1 \
+			bash -c "img_par '{}' '$DEMO_MODE' '$FOUR_COLOR' '$BADPIXELS' '$WHITE' '$HIGHLIGHT_MODE' '$GAMMA' '$NOISE_REDUC' '$DEPTH' \
 						'$SEQ' '$TRUNC_ARG' '$IMG_FMT' '$FRAMES' '$DEPTH_OUT' '$COMPRESS' '$isJPG' '$PROXY_SCALE' '$PROXY' '$BLACK_LEVEL' '$SPACE'\
 					"
-		
+
 		if [ $isJPG == true ]; then #Make it print "Frame $FRAMES / $FRAMES" as the last output :).
-			echo -e "\e[2K\rDNG to ${IMG_FMT^^}/JPG: Frame ${FRAMES}/${FRAMES}\c"
+			echo -e "\e[2K\rDNG to ${IMG_FMT^^}/JPG: Frame ${FRAME_END}/${FRAMES}\c"
 		else
-			echo -e "\e[2K\rDNG to ${IMG_FMT^^}: Frame ${FRAMES}/${FRAMES}\c"
+			echo -e "\e[2K\rDNG to ${IMG_FMT^^}: Frame ${FRAME_END}/${FRAMES}\c"
 		fi
 		
 		echo -e "\n"
@@ -871,7 +949,7 @@ for ARG in $*; do
 				lutLoc="${TMP}/lut_conv"
 				mkdirS $lutLoc
 				
-				find $SEQ -name "*.${IMG_FMT}" | xargs -I '{}' mv {} "${lutLoc}"
+				find $SEQ -name "*.${IMG_FMT}" -print0 | cut -d '' -f $FRAME_RANGE | tr -d "\n" | xargs -0 -I '{}' mv {} "${lutLoc}"
 				ffmpeg -f image2 -i "${lutLoc}/${TRUNC_ARG}_%06d.${IMG_FMT}" -loglevel panic -stats -vf $LUT "${SEQ}/${TRUNC_ARG}_%06d.${IMG_FMT}"
 			fi
 		fi

@@ -1,5 +1,7 @@
 #!/bin/bash
 
+#UNFIXED BUG: Run on all Charleston files; determine what makes -k non-numeric...
+
 #EXPERIMENT:
 #~ ../../mlv_dump -o test/test 700D_mv1080_1728x1158.MLV --dng --no-cs
 #~ readarray -t y <<<`../../mlv_dump -v -m 700D_mv1080_1728x1158.MLV | grep 'Gain [RGB]' | sed 's/[[:alpha:] ]*:   //' | cut -d$'\n' -f1-3`
@@ -66,7 +68,7 @@ isFR=true
 
 #RAW DEVELOPOMENT
 HIGHLIGHT_MODE="0"
-PROXY_SCALE="75%"
+PROXY_SCALE="50%"
 DEMO_MODE="1"
 GAMMA="1 1"
 SPACE="0" #Color Space. Correlates to Gamma.
@@ -83,6 +85,7 @@ BADPIXEL_PATH=""
 isBP=false
 DARKFRAME=""
 SETTINGS_OUTPUT=false
+BLACK_LEVEL=""
 
 #White Balance
 WHITE=""
@@ -247,6 +250,7 @@ mkdirS() {
 	fi
 	
 	if [ $cont == true ]; then 
+		let ARGNUM--
 		continue
 	fi
 	
@@ -523,6 +527,42 @@ checkDeps() {
 		fi
 }
 
+bold() {
+	echo -e "\e[1m${1}\e[0m"
+}
+
+prntSet() {
+	cat << EOF
+$(bold CameraName): ${CAM_NAME}
+$(bold RecordingDate): ${REC_DATE}
+$(bold RecordingTime): ${REC_TIME}
+
+$(bold FPS): ${FPS}
+$(bold TotalFrames): ${FRAMES}
+
+$(bold Aperture): ${APERTURE}
+$(bold ISO): ${ISO}
+$(bold ShutterSpeed): ${SHUTTER}
+$(bold WBKelvin): ${KELVIN}
+
+$(bold FocalLength): ${LEN_FOCAL}
+	
+EOF
+}
+
+mlvSet() {
+	FPS=`${MLV_DUMP} -v -m ${ARG} | grep FPS | awk 'FNR == 1 {print $3}'`
+			
+	CAM_NAME=`${MLV_DUMP} -v -m ${ARG} | grep 'Camera Name' | cut -d "'" -f 2`
+	FRAMES=`${MLV_DUMP} -v -m ${ARG} | grep 'Frames Video' | sed 's/[[:alpha:] ]*: //' | cut -d$'\n' -f1`
+	ISO=`${MLV_DUMP} -v -m ${ARG} | grep 'ISO' | sed 's/[[:alpha:] ]*:        //' | cut -d$'\n' -f2`
+	APERTURE=`${MLV_DUMP} -v -m ${ARG} | grep 'Aperture' | sed 's/[[:alpha:] ]*:    //' | cut -d$'\n' -f1`
+	LEN_FOCAL=`${MLV_DUMP} -v -m ${ARG} | grep 'Focal Len' | sed 's/[[:alpha:] ]*:   //' | cut -d$'\n' -f1`
+	SHUTTER=`${MLV_DUMP} -v -m ${ARG} | grep 'Shutter' | sed 's/[[:alpha:] ]*:   //' | grep -oP '\(\K[^)]+' |  cut -d$'\n' -f1`
+	REC_DATE=`${MLV_DUMP} -v -m ${ARG} | grep 'Date' | sed 's/[[:alpha:] ]*:        //' | cut -d$'\n' -f1`
+	REC_TIME=`${MLV_DUMP} -v -m ${ARG} | grep 'Time:        [0-2][0-9]\:*' | sed 's/[[:alpha:] ]*:        //' | cut -d$'\n' -f1`
+	KELVIN=`${MLV_DUMP} -v -m ${ARG} | grep 'Kelvin' | sed 's/[[:alpha:] ]*:   //' | cut -d$'\n' -f1`
+}
 
 if [ $# == 0 ]; then
 	help
@@ -545,16 +585,10 @@ for ARG in $*; do
 	if [ $SETTINGS_OUTPUT == true ]; then
 		if [ $EXT == "MLV" ] || [ $EXT == "mlv" ]; then
 			# Read the header for interesting settings :) .
-			FPS=`${MLV_DUMP} -v -m ${ARG} | grep FPS | awk 'FNR == 1 {print $3}'`
-			
-			FRAMES=`${MLV_DUMP} -v -m ${ARG} | grep 'Frames Video' | sed 's/[[:alpha:] ]*: //' | cut -d$'\n' -f1`
-			ISO=`${MLV_DUMP} -v -m ${ARG} | grep 'ISO' | sed 's/[[:alpha:] ]*:        //' | cut -d$'\n' -f2`
-			APERTURE=`${MLV_DUMP} -v -m ${ARG} | grep 'Aperture' | sed 's/[[:alpha:] ]*:    //' | cut -d$'\n' -f1`
-			LEN_FOCAL=`${MLV_DUMP} -v -m ${ARG} | grep 'Focal Len' | sed 's/[[:alpha:] ]*:   //' | cut -d$'\n' -f1`
-			SHUTTER=`${MLV_DUMP} -v -m ${ARG} | grep 'Shutter' | sed 's/[[:alpha:] ]*:   //' | grep -oP '\(\K[^)]+' |  cut -d$'\n' -f1`
+			mlvSet
 			
 			echo -e "\n\e[1m\e[0;32m\e[1mFile\e[0m\e[0m: ${ARG}\n"
-			echo -e "\e[1mFPS\e[0m: ${FPS}\n\e[1mFrames\e[0m: ${FRAMES}\n\e[1mISO\e[0m: ${ISO}\n\e[1mAperture\e[0m: ${APERTURE}\n\e[1mFocalLength\e[0m: ${LEN_FOCAL}\n\e[1mShutterSpeed\e[0m: ${SHUTTER} sec"
+			prntSet
 			continue
 		else
 			echo -e "Cannot print settings from ${ARG}; it's not an MLV file!"
@@ -590,6 +624,7 @@ for ARG in $*; do
 	
 	FILE="${OUTDIR}/${TRUNC_ARG}"
 	TMP="${FILE}/tmp_${TRUNC_ARG}"
+	
 #Manage DNG argument/Create FILE and TMP.
 	DEVELOP=true
 	if [ -d $ARG ] && [ `basename ${ARG} | cut -c1-3` == "dng" ] && [ -f "${ARG}/../settings.txt" ]; then #If we're reusing a dng sequence, copy over before we delete the original.
@@ -675,15 +710,10 @@ for ARG in $*; do
 		
 		if [ $EXT == "MLV" ] || [ $EXT == "mlv" ]; then
 			# Read the header for interesting settings :) .
-			FPS=`${MLV_DUMP} -v -m ${ARG} | grep FPS | awk 'FNR == 1 {print $3}'`
+			mlvSet
 			
-			FRAMES=`${MLV_DUMP} -v -m ${ARG} | grep 'Frames Video' | sed 's/[[:alpha:] ]*: //' | cut -d$'\n' -f1`
-			ISO=`${MLV_DUMP} -v -m ${ARG} | grep 'ISO' | sed 's/[[:alpha:] ]*:        //' | cut -d$'\n' -f2`
-			APERTURE=`${MLV_DUMP} -v -m ${ARG} | grep 'Aperture' | sed 's/[[:alpha:] ]*:    //' | cut -d$'\n' -f1`
-			LEN_FOCAL=`${MLV_DUMP} -v -m ${ARG} | grep 'Focal Len' | sed 's/[[:alpha:] ]*:   //' | cut -d$'\n' -f1`
-			SHUTTER=`${MLV_DUMP} -v -m ${ARG} | grep 'Shutter' | sed 's/[[:alpha:] ]*:   //' | grep -oP '\(\K[^)]+' |  cut -d$'\n' -f1`
-			
-			echo -e "FPS: ${FPS}\nFrames: ${FRAMES}\nISO: ${ISO}\nAperture: ${APERTURE}\nFocalLength: ${LEN_FOCAL}\nShutterSpeed: ${SHUTTER}" > $FILE/settings.txt
+			prntSet > $FILE/settings.txt
+			sed -i -r "s/\x1B\[([0-9]{1,2}(;[0-9]{1,2})?)?[m|K]//g" $FILE/settings.txt #Strip escape sequences.
 			
 			#Dual ISO might want to do the chroma smoothing.
 			if [ $DUAL_ISO == true ]; then
@@ -698,9 +728,12 @@ for ARG in $*; do
 			FPS=`$RAW_DUMP $ARG "${TMP}/${TRUNC_ARG}_" | awk '/FPS/ { print $3; }'` #Run the dump while awking for the FPS.
 		fi
 			
-		FRAMES=$(find ${TMP} -name "*.dng" | wc -l)
-		BLACK_LEVEL=$(exiftool -BlackLevel -s -s -s ${TMP}/${TRUNC_ARG}_$(printf "%06d" $(echo "$FRAME_START - 1" | bc)).dng) #Use the first DNG to get the correct black level.
-	fi	
+		FRAMES=$(find ${TMP} -name "*.dng" | wc -l) #Backup
+		
+		BLACK_LEVEL=$(exiftool -BlackLevel -s -s -s ${TMP}/${TRUNC_ARG}_$(printf "%06d" $(echo "$FRAME_START - 1" | bc)).dng)
+	fi
+	
+	BLACK_LEVEL=$(exiftool -BlackLevel -s -s -s ${TMP}/${TRUNC_ARG}_$(printf "%06d" $(echo "$FRAME_START - 1" | bc)).dng) #Use the first DNG to get the correct black level.
 
 #Create badpixels file.
 	if [ $isBP == true ] && [ ! -d $DNG_LOC ]; then
@@ -715,7 +748,7 @@ for ARG in $*; do
 			$MLV_BP -o $gen_bad $ARG
 		fi
 		
-		if [ ! -z $BADPIXEL_PATH ]; then
+		if [[ ! -z $BADPIXEL_PATH ]]; then
 			if [ -f "${TMP}/${bad_name}" ]; then
 				echo -e "\e[1m${TRUNC_ARG}:\e[0m Concatenating with specified badpixels file...\n"
 				mv "${TMP}/${bad_name}" "${TMP}/bp_gen"
@@ -728,15 +761,19 @@ for ARG in $*; do
 		fi
 		
 		BADPIXELS="-P ${gen_bad}"
-	elif [ ! -z $BADPIXEL_PATH ]; then
+	elif [[ ! -z $BADPIXEL_PATH ]]; then
 		echo -e "\e[1m${TRUNC_ARG}:\e[0m Using specified badpixels file...\n"
-		cp $BADPIXEL_PATH "${TMP}/${bad_name}"
+		
+		bad_name="badpixels_${TRUNC_ARG}.txt"
+		gen_bad="${TMP}/${bad_name}"
+		cp $BADPIXEL_PATH "${gen_bad}"
 		BADPIXELS="-P ${gen_bad}"
+		#~ echo $gen_bad
 	fi
 	
 	if [ $isFR == true ]; then #Ensure that FRAME_RANGE is set.
 		FRAME_RANGE="1-${FRAMES}"
-		FRAME_START="0"
+		FRAME_START="1"
 		FRAME_END=$FRAMES
 	fi
 
@@ -879,7 +916,7 @@ for ARG in $*; do
 		#~ cat $PIPE | tr 'e' 'a' & echo 'hello' | tee $PIPE | tr 'e' 'o' #The magic of simultaneous execution ^_^
 	}
 	
-	img_par() { #Takes 20 arguments: {} 2$DEMO_MODE 3$FOUR_COLOR 4$BADPIXELS 5$WHITE 6$HIGHLIGHT_MODE 7$GAMMA 8$NOISE_REDUC 9$DEPTH 10$SEQ 11$TRUNC_ARG 12$IMG_FMT 13$FRAMES 14$DEPTH_OUT 15$COMPRESS 16$isJPG $PROXY_SCALE $PROXY $BLACK_LEVEL $SPACE
+	img_par() { #Takes 20 arguments: {} 2$DEMO_MODE 3$FOUR_COLOR 4$BADPIXELS 5$WHITE 6$HIGHLIGHT_MODE 7$GAMMA 8$NOISE_REDUC 9$DEPTH 10$SEQ 11$TRUNC_ARG 12$IMG_FMT 13$FRAMES 14$DEPTH_OUT 15$COMPRESS 16$isJPG 17$PROXY_SCALE 18$PROXY 19$BLACK_LEVEL 20$SPACE
 		count=$(echo $(echo $1 | rev | cut -d "_" -f 1 | rev | cut -d "." -f 1 | grep "[0-9]") | bc) #Instead of count from file, count from name!
 		if [ ${16} == true ]; then
 			dcraw -c -q $2 $3 $4 $5 -H $6 -k ${19} -g $7 $8 -o ${20} $9 $1 | \

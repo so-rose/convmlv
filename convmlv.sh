@@ -1,5 +1,32 @@
 #!/bin/bash
 
+#TODO:
+#~ DNG Dump Speedup
+#~ --> Progressively cut MLV into $THREADS different MLVs. Dump all & renumber
+#~ over a certain amount of frames.
+
+#~ DNG Dump Progress: Need a progress indicator.
+#~ --> Read stdout of verbose output in a loop.
+#~ --> Use $FRAMES when "Dumping to DNG sequence".
+
+#~ DNG Selective Dump: 
+
+#~ Stats for .RAW files and DNG sequences, best as possible.
+#~ --> Only read the file once into a long string, as opposed to once per setting.
+
+#~ Make compression default.
+
+#~ Frame Range:
+#~ --> Use 1-END, not 0-(END - 1).
+#~ --> Allow substituting e for end, s for start. 
+#~ --> Conditional so nothing crashes if the user screws up.
+
+#~ Better Preview:
+#~ --> Essentially, a different module (like -e) for seeing, not developing, footage.
+#~ --> To start, an option allowing one to see a single frame, developed.
+
+
+
 #UNFIXED BUG: Run on all Charleston files; determine what makes -k non-numeric...
 
 #EXPERIMENT:
@@ -55,7 +82,7 @@ FPS=24 #Will be read from .MLV or .RAW.
 IMAGES=false
 IMG_FMT="exr"
 COMPRESS=""
-isCOMPRESS=false
+isCOMPRESS=true
 isJPG=false
 isH264=false
 KEEP_DNGS=false
@@ -342,7 +369,7 @@ parseArgs() { #Fixing this would be difficult.
 			let ARGNUM--
 		fi
 		if [ `echo ${ARG} | cut -c2-2` = "c" ]; then
-			isCOMPRESS=true
+			isCOMPRESS=false
 			let ARGNUM--
 		fi
 		if [ `echo ${ARG} | cut -c2-2` = "M" ]; then
@@ -546,7 +573,7 @@ $(bold ShutterSpeed): ${SHUTTER}
 $(bold WBKelvin): ${KELVIN}
 
 $(bold FocalLength): ${LEN_FOCAL}
-	
+
 EOF
 }
 
@@ -580,6 +607,7 @@ for ARG in $*; do
 	BASE="$(basename "$ARG")"
 	EXT="${BASE##*.}"
 	TRUNC_ARG="${BASE%.*}"
+	setBL=true
 
 #Potentially Print Settings
 	if [ $SETTINGS_OUTPUT == true ]; then
@@ -625,7 +653,7 @@ for ARG in $*; do
 	FILE="${OUTDIR}/${TRUNC_ARG}"
 	TMP="${FILE}/tmp_${TRUNC_ARG}"
 	
-#Manage DNG argument/Create FILE and TMP.
+#Manage if it's a DNG argument. Also, create FILE and TMP.
 	DEVELOP=true
 	if [ -d $ARG ] && [ `basename ${ARG} | cut -c1-3` == "dng" ] && [ -f "${ARG}/../settings.txt" ]; then #If we're reusing a dng sequence, copy over before we delete the original.
 		echo -e "\e[1m${TRUNC_ARG}:\e[0m Moving DNGs from previous run...\n" #Use prespecified DNG sequence.
@@ -659,6 +687,7 @@ for ARG in $*; do
 		find $DNG_LOC -iname "*.dng" | xargs -I {} mv {} $TMP #Moving files to where they need to go.
 		cp "${DNG_LOC}/settings.txt" $FILE
 		
+		setBL=false
 		DEVELOP=false
 		rm -r $DNG_LOC
 	elif [ -d $ARG ]; then #If it's a DNG sequence, but not a reused one.
@@ -668,6 +697,7 @@ for ARG in $*; do
 		FPS=24 #Set it to a safe default.
 		
 		echo -e "\e[1m${TRUNC_ARG}:\e[0m Using specified folder of RAW sequences...\n" #Use prespecified DNG sequence.
+		
 		find $ARG -iname "*.dng" | xargs -I {} cp {} $TMP #Copying DNGs to TMP.
 		
 		FRAMES=$(find ${TMP} -name "*.dng" | wc -l)
@@ -694,7 +724,7 @@ for ARG in $*; do
 		DARK_PROC="-s ${avgFrame}"
 	fi
 	
-#Dump to/use DNG sequence, perhaps subtracting darkframe.
+#Develop sequence if needed.
 	if [ $DEVELOP == true ]; then
 		echo -e "\e[1m${TRUNC_ARG}:\e[0m Dumping to DNG Sequence...\n"
 				
@@ -809,7 +839,9 @@ for ARG in $*; do
 		echo -e "\n"
 	fi
 	
-	echo -e "BlackLevel: ${BLACK_LEVEL}" >> $FILE/settings.txt #Black level must now be set.
+	if [ $setBL == true ]; then
+		echo -e "BlackLevel: ${BLACK_LEVEL}" >> $FILE/settings.txt #Black level must now be set.
+	fi
 
 #Get White Balance correction factor.
 	if [ $GEN_WHITE == true ]; then
@@ -830,7 +862,7 @@ for ARG in $*; do
 		trap "rm -rf ${FILE}; exit 1" INT
 		for file in $TMP/*.dng; do 
 			if [ `echo "(${i}+1) % ${n}" | bc` -eq 0 ]; then
-				dcraw -q 0 $BADPIXELS -r 1 1 1 1 -g $GAMMA -o $SPACE -T "${file}"
+				dcraw -q 0 $BADPIXELS -r 1 1 1 1 -g $GAMMA -k $BLACK_LEVEL -o $SPACE -T "${file}"
 				name=$(basename "$file")
 				mv "$TMP/${name%.*}.tiff" $toBal #TIFF MOVEMENT. We use TIFFs here because it's easy for dcraw and Python.
 				let t++
@@ -937,7 +969,7 @@ for ARG in $*; do
 
 #IMAGE PROCESSING
 	if [ $IMAGES == true ] ; then
-		echo -e "\e[1m${TRUNC_ARG}:\e[0m Processing Image Sequence...\n"
+		echo -e "\e[1m${TRUNC_ARG}:\e[0m Processing Image Sequence from Frame ${FRAME_START} to ${FRAME_END}...\n"
 		
 #Define Image Directories, Create SEQ directory
 		SEQ="${FILE}/${IMG_FMT}_${TRUNC_ARG}"

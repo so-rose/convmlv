@@ -51,7 +51,7 @@ fi
 DEB_DEPS="imagemagick dcraw ffmpeg python3 python3-pip exiftool" #Dependency package names (Debian). List with -K option.
 PIP_DEPS="numpy Pillow tifffile" #Technically, you don't need Pillow. I'm not really sure :).
 MAN_DEPS="mlv_dump raw2dng cr2hdr mlv2badpixels.sh balance.py"
-PYTHON="python3"
+PYTHON="python3" #Different depending on OS. Probably just 'python'.
 
 #PATHS
 MLV_DUMP="./mlv_dump" #Path to mlv_dump location.
@@ -59,7 +59,9 @@ RAW_DUMP="./raw2dng" #Path to raw2dng location.
 CR_HDR="./cr2hdr" #Path to cr2hdr location.
 MLV_BP="./mlv2badpixels.sh"
 PYTHON_BAL="./balance.py"
+PYTHON_SRANGE="./sRange.py"
 BAL="${PYTHON} ${PYTHON_BAL}"
+SRANGE="${PYTHON} ${PYTHON_SRANGE}"
 OUTDIR="$(pwd)/raw_conv"
 isOutGen=false
 
@@ -584,7 +586,7 @@ mlvSet() {
 	FPS=`${MLV_DUMP} -v -m ${ARG} | grep FPS | awk 'FNR == 1 {print $3}'`
 			
 	CAM_NAME=`${MLV_DUMP} -v -m ${ARG} | grep 'Camera Name' | cut -d "'" -f 2`
-	FRAMES=`${MLV_DUMP} -v -m ${ARG} | grep 'Frames Video' | sed 's/[[:alpha:] ]*: //' | cut -d$'\n' -f1`
+	FRAMES=`${MLV_DUMP} ${ARG} | awk '/Processed/ { print $2; }'` #Use actual processed frames as opposed to what the sometimes incorrect metadata thinks.
 	ISO=`${MLV_DUMP} -v -m ${ARG} | grep 'ISO' | sed 's/[[:alpha:] ]*:        //' | cut -d$'\n' -f2`
 	APERTURE=`${MLV_DUMP} -v -m ${ARG} | grep 'Aperture' | sed 's/[[:alpha:] ]*:    //' | cut -d$'\n' -f1`
 	LEN_FOCAL=`${MLV_DUMP} -v -m ${ARG} | grep 'Focal Len' | sed 's/[[:alpha:] ]*:   //' | cut -d$'\n' -f1`
@@ -769,18 +771,21 @@ for ARG in $*; do
 			
 			#Dual ISO might want to do the chroma smoothing. In which case, don't do it now!
 			if [ $DUAL_ISO == true ]; then
-				smooth=""
+				smooth="--no-cs"
 			else
 				smooth=$CHROMA_SMOOTH
 			fi
 			
 			#Create new MLV with adequate number of frames, if needed.
 			REAL_MLV=$ARG
+			REAL_FRAMES=$FRAMES
 			if [ $isFR == false ]; then
 				REAL_MLV="${TMP}/newer.mlv"
 				$MLV_DUMP $ARG -o ${REAL_MLV} -f ${FRAME_RANGE} >/dev/null 2>/dev/null
-				#~ echo ${FRAME_RANGE_ZERO}
+				REAL_FRAMES=`${MLV_DUMP} ${REAL_MLV} | awk '/Processed/ { print $2; }'`
 			fi
+			
+			fileRanges=(`echo $($SRANGE $REAL_FRAMES $THREADS)`)
 			
 			$MLV_DUMP $REAL_MLV $DARK_PROC -o "${TMP}/${TRUNC_ARG}_" --dng $smooth --batch | {
 				while IFS= read -r line; do

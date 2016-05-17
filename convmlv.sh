@@ -5,16 +5,8 @@
 #~ --> Progressively cut MLV into $THREADS different MLVs. Dump all & renumber
 #~ over a certain amount of frames.
 
-#~ DNG Dump Progress: Need a progress indicator.
-#~ --> Read stdout of verbose output in a loop.
-#~ --> Use $FRAMES when "Dumping to DNG sequence".
-
-#~ DNG Selective Dump: 
-
 #~ Stats for .RAW files and DNG sequences, best as possible.
 #~ --> Only read the file once into a long string, as opposed to once per setting.
-
-#~ Make compression default.
 
 #~ Frame Range:
 #~ --> Use 1-END, not 0-(END - 1).
@@ -91,6 +83,7 @@ KEEP_DNGS=false
 FRAME_RANGE="" #UPDATED LATER WHEN FRAME # IS AVAILABLE.
 FRAME_START="1"
 FRAME_END=""
+RANGE_BASE=""
 isFR=true
 
 #RAW DEVELOPOMENT
@@ -119,6 +112,8 @@ WHITE=""
 GEN_WHITE=false
 CAMERA_WB=true
 WHITE_SPD=15
+isScale=false
+SATPOINT=""
 
 #LUT
 LUT=""
@@ -165,7 +160,6 @@ OPTIONS, OUTPUT:
 
 	-c   COMPRESS - Specify to turn ***off*** automatic image compression. Auto compression options otherwise used:
 	  --> TIFF: ZIP (best for 16-bit), PIZ for EXR (best for grainy images), PNG: lvl 9 (zlib deflate), DPX: RLE.
-	  --> EXR's piz compression tends to be fastest + best.
 	
 	-m   MOVIE - Specify to create a Prores4444 video.
 	
@@ -180,7 +174,7 @@ OPTIONS, OUTPUT:
 	  --> If you run convmlv on the dng_<name> folder, you will reuse those DNGs - no need to redevelop!
 	  
 	-E<range>   FRAME_RANGE - Specify to process only this frame range.
-	  --> DNGs will still all be generated. Use -k to reuse a previous iteration to get past this!
+	  --> Use s and e appropriately to specify start and end.
 	  --> <range> must be written as <start>-<end>, indexed from 0 to (# of frames - 1).
 	  --> If you write a single number, only that frame will be developed.
 	
@@ -210,9 +204,16 @@ OPTIONS, RAW DEVELOPMENT:
 	
 	
 OPTIONS, COLOR:
-	-w[0:2]   WHITE - This is a modal white balance setting. Defaults to 0. 1 doesn't always work very well.
+	-w[0:2]   WHITE - This is a modal white balance setting. Defaults to 1.
 	  --> Use -w<mode> (no space).
 	  --> 0: Auto WB (Requires Python Deps). 1: Camera WB. 2: No Change.
+	  
+	-L   WHITE_SCALE - Specify to allow channels to clip as a result of any white balance.
+	  --> Information loss occurs in certain situations.
+	  
+	-t[int]   SATPOINT - Specify the 14-bit saturation point of your camera.
+	  --> Lower if -H1 yields purple highlights. Must be correct for highlight reconstruction.
+	  --> Determine using the max value of 'dcraw -D -j -4 -T'
 	
 	-A[int]   WHITE_SPD - This is the amount of samples from which AWB will be calculated.
 	  -->About this many frames, averaged over the course of the sequence, will be used to do AWB.
@@ -311,15 +312,18 @@ parseArgs() { #Fixing this would be difficult.
 			let ARGNUM--
 		fi
 		if [ `echo ${ARG} | cut -c2-2` = "E" ]; then
-			base=$(echo ${ARG} | cut -c3-${#ARG})
-			FRAME_RANGE="$(echo "$(echo $base | cut -d"-" -f1) + 1" | bc)-$(echo "$(echo $base | cut -d"-" -f2) + 1" | bc)"
-			FRAME_START=$(echo ${FRAME_RANGE} | cut -d"-" -f1)
-			FRAME_END=$(echo ${FRAME_RANGE} | cut -d"-" -f2)
+			RANGE_BASE=$(echo ${ARG} | cut -c3-${#ARG})
+			
 			isFR=false
 			let ARGNUM--
 		fi
 		if [ `echo ${ARG} | cut -c2-2` = "F" ]; then
 			DARKFRAME=`echo ${ARG} | cut -c3-${#ARG}`
+			let ARGNUM--
+		fi
+		if [ `echo ${ARG} | cut -c2-2` = "t" ]; then
+			tmpSat=`echo ${ARG} | cut -c3-${#ARG}`
+			SATPOINT="-S ${tmpSat}"
 			let ARGNUM--
 		fi
 		if [ `echo ${ARG} | cut -c2-2` = "r" ]; then
@@ -370,6 +374,10 @@ parseArgs() { #Fixing this would be difficult.
 		fi
 		if [ `echo ${ARG} | cut -c2-2` = "c" ]; then
 			isCOMPRESS=false
+			let ARGNUM--
+		fi
+		if [ `echo ${ARG} | cut -c2-2` = "L" ]; then
+			isScale=true
 			let ARGNUM--
 		fi
 		if [ `echo ${ARG} | cut -c2-2` = "M" ]; then
@@ -723,7 +731,23 @@ for ARG in $*; do
 		
 		DARK_PROC="-s ${avgFrame}"
 	fi
-	
+
+	setRange() {
+		#FRAMES must be set at this point.
+		if [[ $isFR == true ]]; then #Ensure that FRAME_RANGE is set.
+			FRAME_RANGE="1-${FRAMES}"
+			FRAME_START="1"
+			FRAME_END=$FRAMES
+		else
+			base=$(echo $RANGE_BASE | sed -e 's:s:0:g' | sed -e "s:e:$(echo "$FRAMES - 1" | bc):g") #FRAMES is incremented in a moment.
+			
+			#~ FRAME_RANGE_ZERO="$(echo $base | cut -d"-" -f1)-$(echo $base | cut -d"-" -f2)" #Number from 0. Useless as of now.
+			FRAME_RANGE="$(echo "$(echo $base | cut -d"-" -f1) + 1" | bc)-$(echo "$(echo $base | cut -d"-" -f2) + 1" | bc)" #Number from 1.
+			FRAME_START=$(echo ${FRAME_RANGE} | cut -d"-" -f1)
+			FRAME_END=$(echo ${FRAME_RANGE} | cut -d"-" -f2)
+		fi
+	}
+
 #Develop sequence if needed.
 	if [ $DEVELOP == true ]; then
 		echo -e "\e[1m${TRUNC_ARG}:\e[0m Dumping to DNG Sequence...\n"
@@ -738,35 +762,72 @@ for ARG in $*; do
 			rawStat="\c"
 		fi
 		
+		#IF extension is RAW, convert to MLV. All the newer features are MLV-only, because of mlv_dump's amazingness.
+		
 		if [ $EXT == "MLV" ] || [ $EXT == "mlv" ]; then
 			# Read the header for interesting settings :) .
 			mlvSet
+			setRange
 			
 			prntSet > $FILE/settings.txt
 			sed -i -r "s/\x1B\[([0-9]{1,2}(;[0-9]{1,2})?)?[m|K]//g" $FILE/settings.txt #Strip escape sequences.
 			
-			#Dual ISO might want to do the chroma smoothing.
+			#Dual ISO might want to do the chroma smoothing. In which case, don't do it now!
 			if [ $DUAL_ISO == true ]; then
 				smooth=""
 			else
 				smooth=$CHROMA_SMOOTH
 			fi
 			
-			$MLV_DUMP $ARG $DARK_PROC -o "${TMP}/${TRUNC_ARG}_" --dng $smooth >/dev/null 2>/dev/null
+			#Create new MLV with adequate number of frames, if needed.
+			REAL_MLV=$ARG
+			if [ $isFR == false ]; then
+				REAL_MLV="${TMP}/newer.mlv"
+				$MLV_DUMP $ARG -o ${REAL_MLV} -f ${FRAME_RANGE} >/dev/null 2>/dev/null
+				#~ echo ${FRAME_RANGE_ZERO}
+			fi
+			
+			$MLV_DUMP $REAL_MLV $DARK_PROC -o "${TMP}/${TRUNC_ARG}_" --dng $smooth --batch | {
+				while IFS= read -r line; do
+					output=$(echo $line | grep -Po 'V.*A' | cut -d':' -f2 | cut -d$' ' -f1)
+					if [[ $output == "" ]]; then
+						continue;
+					fi
+					cur=$(echo "$(echo "$output" | cut -d'/' -f1) + $(echo "$FRAME_START - 1" | bc)" | bc)
+					echo -e "\e[2K\rDumping MLV to DNG: Frame ${cur}/${FRAME_END}\c"
+				done
+				echo -e "\e[2K\rDumping MLV to DNG: Frame ${FRAME_END}/${FRAME_END}\c" #Ensure it looks right at the end.
+				echo -e "\n"
+			} #Progress Bar
+						
+			#Renumber DNGs if needed.
+			if [ $isFR == false ]; then
+				count=$FRAME_START
+				tmpOut=${TMP}/tmpOut #Use temporary folder.
+				mkdir $tmpOut
+				for dng in ${TMP}/*.dng; do
+					if [ $count -gt $FRAME_END ]; then echo "ERROR! Count greater than end!"; fi
+					mv $dng $(printf "${tmpOut}/${TRUNC_ARG}_%06d.dng" $count)
+					let count++
+				done
+				mv $tmpOut/* $TMP
+				rm -r $tmpOut
+			fi
+			
 		elif [ $EXT == "RAW" ] || [ $EXT == "raw" ]; then
 			echo -e $rawStat
 			FPS=`$RAW_DUMP $ARG "${TMP}/${TRUNC_ARG}_" | awk '/FPS/ { print $3; }'` #Run the dump while awking for the FPS.
 		fi
-			
-		FRAMES=$(find ${TMP} -name "*.dng" | wc -l) #Backup
-		
-		BLACK_LEVEL=$(exiftool -BlackLevel -s -s -s ${TMP}/${TRUNC_ARG}_$(printf "%06d" $(echo "$FRAME_START - 1" | bc)).dng)
+				
+		BLACK_LEVEL=$(exiftool -BlackLevel -s -s -s ${TMP}/${TRUNC_ARG}_$(printf "%06d" $(echo "$FRAME_START" | bc)).dng)
 	fi
 	
-	BLACK_LEVEL=$(exiftool -BlackLevel -s -s -s ${TMP}/${TRUNC_ARG}_$(printf "%06d" $(echo "$FRAME_START - 1" | bc)).dng) #Use the first DNG to get the correct black level.
-
+	BLACK_LEVEL=$(exiftool -BlackLevel -s -s -s ${TMP}/${TRUNC_ARG}_$(printf "%06d" $(echo "$FRAME_START" | bc)).dng) #Use the first DNG to get the correct black level.
+	
+	setRange #Just to be sure the frame range was set, in case the input isn't MLV.
+	
 #Create badpixels file.
-	if [ $isBP == true ] && [ ! -d $DNG_LOC ]; then
+	if [ $isBP == true ] && [ $DEVELOP == true ]; then
 		echo -e "\e[1m${TRUNC_ARG}:\e[0m Generating badpixels file...\n"
 		
 		bad_name="badpixels_${TRUNC_ARG}.txt"
@@ -800,12 +861,6 @@ for ARG in $*; do
 		BADPIXELS="-P ${gen_bad}"
 		#~ echo $gen_bad
 	fi
-	
-	if [ $isFR == true ]; then #Ensure that FRAME_RANGE is set.
-		FRAME_RANGE="1-${FRAMES}"
-		FRAME_START="1"
-		FRAME_END=$FRAMES
-	fi
 
 #Dual ISO Conversion
 	if [ $DUAL_ISO == true ]; then
@@ -815,7 +870,7 @@ for ARG in $*; do
 		oldFiles="${TMP}/orig_dng"
 		mkdirS $oldFiles
 		
-		inc_iso() { #6 args: 1{} 2$CR_HDR 3$TMP 4$FRAMES 5$oldFiles 6$CHROMA_SMOOTH. {} is a path. Progress is thread safe. Experiment gone right :).
+		inc_iso() { #6 args: 1{} 2$CR_HDR 3$TMP 4$FRAME_END 5$oldFiles 6$CHROMA_SMOOTH. {} is a path. Progress is thread safe. Experiment gone right :).
 			count=$(echo "$(echo $(echo $1 | rev | cut -d "_" -f 1 | rev | cut -d "." -f 1 | grep "[0-9]") | bc) + 1" | bc) #Get count from filename.
 			
 			$2 $1 $6 >/dev/null 2>/dev/null #The LQ option, --mean23, is completely unusable in my opinion.
@@ -830,11 +885,9 @@ for ARG in $*; do
 		export -f inc_iso #Must expose function to subprocess.
 		
 		find $TMP -maxdepth 1 -name "*.dng" -print0 | sort -z | cut -d '' --complement -f $FRAME_RANGE | tr -d '\n' | xargs -0 -I {} -n 1 mv {} $oldFiles #Move all the others to correct position.
-		find $TMP -maxdepth 1 -name "*.dng" -print0 | sort -z | xargs -0 -I {} -P $THREADS -n 1 bash -c "inc_iso '{}' '$CR_HDR' '$TMP' '$FRAMES' '$oldFiles' '$CHROMA_SMOOTH'"
-		
-		FRAME_RANGE="1-${FRAMES}"
-		
-		BLACK_LEVEL=$(exiftool -BlackLevel -s -s -s ${TMP}/${TRUNC_ARG}_$(printf "%06d" $(echo "$FRAME_START - 1" | bc)).dng) #Use the first DNG to get the correct black level.
+		find $TMP -maxdepth 1 -name "*.dng" -print0 | sort -z | xargs -0 -I {} -P $THREADS -n 1 bash -c "inc_iso '{}' '$CR_HDR' '$TMP' '$FRAME_END' '$oldFiles' '$CHROMA_SMOOTH'"
+				
+		BLACK_LEVEL=$(exiftool -BlackLevel -s -s -s ${TMP}/${TRUNC_ARG}_$(printf "%06d" $(echo "$FRAME_START" | bc)).dng) #Use the first DNG to get the correct black level.
 
 		echo -e "\n"
 	fi
@@ -842,7 +895,34 @@ for ARG in $*; do
 	if [ $setBL == true ]; then
 		echo -e "BlackLevel: ${BLACK_LEVEL}" >> $FILE/settings.txt #Black level must now be set.
 	fi
-
+	
+	normToOne() {
+		wBal=$1
+		
+		max=0.0
+		for mult in $wBal; do
+			if [ $(echo " $mult > $max" | bc) -eq 1 ]; then
+				max=$mult
+			fi
+		done
+		
+		for mult in $wBal; do
+			echo -e "$(echo "scale=6; x=${mult} / ${max}; if(x<1) print 0; x" | bc -l) \c" #BC is bae.
+		done
+	}
+	
+	getGreen() {
+		wBal=$1
+		
+		i=0
+		for mult in $wBal; do
+			if [ $i -eq 1 ]; then
+				echo -e "${mult}"
+			fi
+			let i++
+		done
+	}
+	
 #Get White Balance correction factor.
 	if [ $GEN_WHITE == true ]; then
 		echo -e "\e[1m${TRUNC_ARG}:\e[0m Generating WB...\n"
@@ -862,7 +942,7 @@ for ARG in $*; do
 		trap "rm -rf ${FILE}; exit 1" INT
 		for file in $TMP/*.dng; do 
 			if [ `echo "(${i}+1) % ${n}" | bc` -eq 0 ]; then
-				dcraw -q 0 $BADPIXELS -r 1 1 1 1 -g $GAMMA -k $BLACK_LEVEL -o $SPACE -T "${file}"
+				dcraw -q 0 $BADPIXELS -r 1 1 1 1 -g $GAMMA -k $BLACK_LEVEL $SATPOINT -o $SPACE -T "${file}"
 				name=$(basename "$file")
 				mv "$TMP/${name%.*}.tiff" $toBal #TIFF MOVEMENT. We use TIFFs here because it's easy for dcraw and Python.
 				let t++
@@ -875,8 +955,6 @@ for ARG in $*; do
 		#Calculate + store result into a form dcraw likes.
 		echo -e "Calculating Auto White Balance..."
 		BALANCE=`$BAL $toBal`
-		WHITE="-r ${BALANCE} 1.000000"
-		echo -e "Correction Factor (RGBG): ${BALANCE} 1.000000\n"
 		
 	elif [ $CAMERA_WB == true ]; then
 		echo -e "\e[1m${TRUNC_ARG}:\e[0m Retrieving Camera White Balance..."
@@ -887,12 +965,20 @@ for ARG in $*; do
 			BALANCE=`dcraw -T -w -v -c ${file} 2>&1 | awk '/multipliers/ { print $2, $3, $4 }'`
 			break
 		done
-		WHITE="-r ${BALANCE} 1.0"
-		echo -e "Correction Factor (RGBG): ${BALANCE} 1.000000\n"
-	else
+
+	else #Something must always be set.
 		echo -e "\e[1m${TRUNC_ARG}:\e[0m Ignoring White Balance..."
-		echo -e "Correction Factor (RGBG): 1.000000 1.000000 1.000000 1.000000\n"
+		
+		BALANCE="1.000000 1.000000 1.000000"
 	fi
+	
+	#Finally, set the white balance after determining it.
+	if [ $isScale = false ]; then
+		BALANCE=$(normToOne "$BALANCE")
+	fi
+	green=$(getGreen "$BALANCE")
+	WHITE="-r ${BALANCE} ${green}"
+	echo -e "Correction Factor (RGBG): ${BALANCE} ${green}\n"
 
 #Move .wav.
 	SOUND_PATH="${TMP}/${TRUNC_ARG}_.wav"
@@ -908,7 +994,7 @@ for ARG in $*; do
 		
 	dcrawOpt() { #Find, develop, and splay raw DNG data as ppm, ready to be processed.
 		find "${TMP}" -maxdepth 1 -iname "*.dng" -print0 | sort -z | cut -d '' -f $FRAME_RANGE | tr -d "\n" | xargs -0 \
-			dcraw -c -q $DEMO_MODE $FOUR_COLOR -k $BLACK_LEVEL $BADPIXELS $WHITE -H $HIGHLIGHT_MODE -g $GAMMA $NOISE_REDUC -o $SPACE $DEPTH
+			dcraw -c -q $DEMO_MODE $FOUR_COLOR -k $BLACK_LEVEL $SATPOINT $BADPIXELS $WHITE -H $HIGHLIGHT_MODE -g $GAMMA $NOISE_REDUC -o $SPACE $DEPTH
 	} #Is prepared to pipe all the files in TMP outwards.
 	
 	dcrawImg() { #Find and splay image sequence data as ppm, ready to be processed by ffmpeg.
@@ -948,15 +1034,15 @@ for ARG in $*; do
 		#~ cat $PIPE | tr 'e' 'a' & echo 'hello' | tee $PIPE | tr 'e' 'o' #The magic of simultaneous execution ^_^
 	}
 	
-	img_par() { #Takes 20 arguments: {} 2$DEMO_MODE 3$FOUR_COLOR 4$BADPIXELS 5$WHITE 6$HIGHLIGHT_MODE 7$GAMMA 8$NOISE_REDUC 9$DEPTH 10$SEQ 11$TRUNC_ARG 12$IMG_FMT 13$FRAMES 14$DEPTH_OUT 15$COMPRESS 16$isJPG 17$PROXY_SCALE 18$PROXY 19$BLACK_LEVEL 20$SPACE
+	img_par() { #Takes 20 arguments: {} 2$DEMO_MODE 3$FOUR_COLOR 4$BADPIXELS 5$WHITE 6$HIGHLIGHT_MODE 7$GAMMA 8$NOISE_REDUC 9$DEPTH 10$SEQ 11$TRUNC_ARG 12$IMG_FMT 13$FRAME_END 14$DEPTH_OUT 15$COMPRESS 16$isJPG 17$PROXY_SCALE 18$PROXY 19$BLACK_LEVEL 20$SPACE 21$SATPOINT
 		count=$(echo $(echo $1 | rev | cut -d "_" -f 1 | rev | cut -d "." -f 1 | grep "[0-9]") | bc) #Instead of count from file, count from name!
 		if [ ${16} == true ]; then
-			dcraw -c -q $2 $3 $4 $5 -H $6 -k ${19} -g $7 $8 -o ${20} $9 $1 | \
+			dcraw -c -q $2 $3 $4 $5 -H $6 -k ${19} ${21} -g $7 $8 -o ${20} $9 $1 | \
 				tee >(convert ${14} - ${15} $(printf "${10}/${11}_%06d.${12}" ${count})) | \
 					convert - -quality 90 -resize ${17} $(printf "${18}/${11}_%06d.jpg" ${count})
 			echo -e "\e[2K\rDNG to ${12^^}/JPG: Frame ${count^^}/${13}\c"
 		else
-			dcraw -c -q $2 $3 $4 $5 -H $6 -k ${19} -g $7 $8 -o ${20} $9 $1 | \
+			dcraw -c -q $2 $3 $4 $5 -H $6 -k ${19} ${21} -g $7 $8 -o ${20} $9 $1 | \
 				convert ${14} - ${15} $(printf "${10}/${11}_%06d.${12}" ${count})
 			echo -e "\e[2K\rDNG to ${12^^}: Frame ${count^^}/${13}\c"
 		fi
@@ -995,15 +1081,16 @@ for ARG in $*; do
 		fi
 
 #Convert all the actual DNGs to IMG_FMT, in parallel.
-		find "${TMP}" -maxdepth 1 -name '*.dng' -print0 | sort -z | cut -d '' -f $FRAME_RANGE | tr -d "\n" | xargs -0 -I {} -P $THREADS -n 1 \
+		find "${TMP}" -maxdepth 1 -name '*.dng' -print0 | sort -z | xargs -0 -I {} -P $THREADS -n 1 \
 			bash -c "img_par '{}' '$DEMO_MODE' '$FOUR_COLOR' '$BADPIXELS' '$WHITE' '$HIGHLIGHT_MODE' '$GAMMA' '$NOISE_REDUC' '$DEPTH' \
-						'$SEQ' '$TRUNC_ARG' '$IMG_FMT' '$FRAMES' '$DEPTH_OUT' '$COMPRESS' '$isJPG' '$PROXY_SCALE' '$PROXY' '$BLACK_LEVEL' '$SPACE'\
-					"
+			'$SEQ' '$TRUNC_ARG' '$IMG_FMT' '$FRAME_END' '$DEPTH_OUT' '$COMPRESS' '$isJPG' '$PROXY_SCALE' '$PROXY' '$BLACK_LEVEL' '$SPACE' '$SATPOINT'"
+					
+		# Removed  | cut -d '' -f $FRAME_RANGE , as this happens when creating the DNGs in the first place.
 
 		if [ $isJPG == true ]; then #Make it print "Frame $FRAMES / $FRAMES" as the last output :).
-			echo -e "\e[2K\rDNG to ${IMG_FMT^^}/JPG: Frame ${FRAME_END}/${FRAMES}\c"
+			echo -e "\e[2K\rDNG to ${IMG_FMT^^}/JPG: Frame ${FRAME_END}/${FRAME_END}\c"
 		else
-			echo -e "\e[2K\rDNG to ${IMG_FMT^^}: Frame ${FRAME_END}/${FRAMES}\c"
+			echo -e "\e[2K\rDNG to ${IMG_FMT^^}: Frame ${FRAME_END}/${FRAME_END}\c"
 		fi
 		
 		echo -e "\n"

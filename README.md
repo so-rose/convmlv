@@ -1,6 +1,6 @@
 # convmlv #
 
-MLV to TIFF/ProRes and Proxy ProRes/H.264
+MLV/RAW/DNG to Image/Movie and Proxy
 =======
 See [http://www.magiclantern.fm/forum/index.php?topic=16799.0](http://www.magiclantern.fm/forum/index.php?topic=16799.0) for more info.
 
@@ -17,7 +17,7 @@ INFO:
 	A script allowing you to convert .MLV, .RAW, or a folder with a DNG sequence into a sequence/movie with optional proxies. Images
 	are auto compressed. Many useful options are exposed, including formats (EXR by default).
 	
-VERSION: 1.8.1
+VERSION: 1.8.2
 	
 DEPENDENCIES: If you don't use a feature, you don't need the dependency, though it's best to download them all.
 	-mlv_dump: For DNG extraction from MLV. http://www.magiclantern.fm/forum/index.php?topic=7122.0
@@ -49,7 +49,6 @@ OPTIONS, OUTPUT:
 
 	-c   COMPRESS - Specify to turn ***off*** automatic image compression. Auto compression options otherwise used:
 	  --> TIFF: ZIP (best for 16-bit), PIZ for EXR (best for grainy images), PNG: lvl 9 (zlib deflate), DPX: RLE.
-	  --> EXR's piz compression tends to be fastest + best.
 	
 	-m   MOVIE - Specify to create a Prores4444 video.
 	
@@ -64,7 +63,7 @@ OPTIONS, OUTPUT:
 	  --> If you run convmlv on the dng_<name> folder, you will reuse those DNGs - no need to redevelop!
 	  
 	-E<range>   FRAME_RANGE - Specify to process only this frame range.
-	  --> DNGs will still all be generated. Use -k to reuse a previous iteration to get past this!
+	  --> Use s and e appropriately to specify start and end.
 	  --> <range> must be written as <start>-<end>, indexed from 0 to (# of frames - 1).
 	  --> If you write a single number, only that frame will be developed.
 	
@@ -94,9 +93,16 @@ OPTIONS, RAW DEVELOPMENT:
 	
 	
 OPTIONS, COLOR:
-	-w[0:2]   WHITE - This is a modal white balance setting. Defaults to 0. 1 doesn't always work very well.
+	-w[0:2]   WHITE - This is a modal white balance setting. Defaults to 1.
 	  --> Use -w<mode> (no space).
 	  --> 0: Auto WB (Requires Python Deps). 1: Camera WB. 2: No Change.
+	  
+	-L   WHITE_SCALE - Specify to allow channels to clip as a result of any white balance.
+	  --> Information loss occurs in certain situations.
+	  
+	-t[int]   SATPOINT - Specify the 14-bit saturation point of your camera.
+	  --> Lower if -H1 yields purple highlights. Must be correct for highlight reconstruction.
+	  --> Determine using the max value of 'dcraw -D -j -4 -T'
 	
 	-A[int]   WHITE_SPD - This is the amount of samples from which AWB will be calculated.
 	  -->About this many frames, averaged over the course of the sequence, will be used to do AWB.
@@ -135,6 +141,4 @@ OPTIONS, INFO:
 	
 	-N  Manual Deps - Lists manual dependencies, which must be downloaded by hand.
 	  --> There's no automatic way to install these. See the forum post.
-
-
 ```

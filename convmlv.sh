@@ -8,22 +8,12 @@
 #~ Stats for .RAW files and DNG sequences, best as possible.
 #~ --> Only read the file once into a long string, as opposed to once per setting.
 
-#~ Frame Range:
-#~ --> Use 1-END, not 0-(END - 1).
-#~ --> Allow substituting e for end, s for start. 
-#~ --> Conditional so nothing crashes if the user screws up.
-
 #~ Better Preview:
 #~ --> Essentially, a different module (like -e) for seeing, not developing, footage.
 #~ --> To start, an option allowing one to see a single frame, developed.
 
 
-
-#UNFIXED BUG: Run on all Charleston files; determine what makes -k non-numeric...
-
-#EXPERIMENT:
-#~ ../../mlv_dump -o test/test 700D_mv1080_1728x1158.MLV --dng --no-cs
-#~ readarray -t y <<<`../../mlv_dump -v -m 700D_mv1080_1728x1158.MLV | grep 'Gain [RGB]' | sed 's/[[:alpha:] ]*:   //' | cut -d$'\n' -f1-3`
+#UNFIXED BUG: Run on all Charleston files; determine what's making Black Level not appear sometimes.
 
 
 #~ The MIT License (MIT)
@@ -49,8 +39,13 @@
 #~ SOFTWARE.
 
 #BASIC VARS
-VERSION="1.8.1" #Version string.
-THREADS=8
+VERSION="1.8.2" #Version string.
+if [[ $OSTYPE == "linux-gnu" ]]; then
+	THREADS=$(cat /proc/cpuinfo | awk '/^processor/{print $3}' | tail -1)
+else
+	THREADS=4
+fi
+#sysctl -n hw.ncpu for Mac
 
 #DEPENDENCIES
 DEB_DEPS="imagemagick dcraw ffmpeg python3 python3-pip exiftool" #Dependency package names (Debian). List with -K option.

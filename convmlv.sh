@@ -1,19 +1,15 @@
 #!/bin/bash
 
 #TODO:
-#~ DNG Dump Speedup
-#~ --> Progressively cut MLV into $THREADS different MLVs. Dump all & renumber
-#~ over a certain amount of frames.
-
 #~ Stats for .RAW files and DNG sequences, best as possible.
 #~ --> Only read the file once into a long string, as opposed to once per setting.
 
 #~ Better Preview:
 #~ --> Essentially, a different module (like -e) for seeing, not developing, footage.
-#~ --> To start, an option allowing one to see a single frame, developed.
+#~ --> To start, an option allowing one to see a single frame, developed. -DONE
 
 
-#UNFIXED BUG: Run on all Charleston files; determine what's making Black Level not appear sometimes.
+#MAYBE FIXED BUG: Run on all Charleston files; determine what's making Black Level not appear sometimes.
 
 
 #~ The MIT License (MIT)
@@ -39,7 +35,7 @@
 #~ SOFTWARE.
 
 #BASIC VARS
-VERSION="1.8.2" #Version string.
+VERSION="1.9.0" #Version string.
 if [[ $OSTYPE == "linux-gnu" ]]; then
 	THREADS=$(cat /proc/cpuinfo | awk '/^processor/{print $3}' | tail -1)
 else
@@ -50,19 +46,30 @@ fi
 #DEPENDENCIES
 DEB_DEPS="imagemagick dcraw ffmpeg python3 python3-pip exiftool" #Dependency package names (Debian). List with -K option.
 PIP_DEPS="numpy Pillow tifffile" #Technically, you don't need Pillow. I'm not really sure :).
-MAN_DEPS="mlv_dump raw2dng cr2hdr mlv2badpixels.sh balance.py"
-PYTHON="python3" #Different depending on OS. Probably just 'python'.
+MAN_DEPS="mlv_dump raw2dng cr2hdr mlv2badpixels.sh balance.py sRange.py"
+if [[ $OSTYPE == "linux-gnu" ]]; then
+	PYTHON="python3"
+else
+	PYTHON="python"
+fi
+
 
 #PATHS
-MLV_DUMP="./mlv_dump" #Path to mlv_dump location.
-RAW_DUMP="./raw2dng" #Path to raw2dng location.
-CR_HDR="./cr2hdr" #Path to cr2hdr location.
-MLV_BP="./mlv2badpixels.sh"
-PYTHON_BAL="./balance.py"
-PYTHON_SRANGE="./sRange.py"
-BAL="${PYTHON} ${PYTHON_BAL}"
-SRANGE="${PYTHON} ${PYTHON_SRANGE}"
-OUTDIR="$(pwd)/raw_conv"
+RES_PATH="." #Current Directory by default.
+
+setPaths() { #Repends on RES_PATH and PYTHON. Run this function if either is changed.
+	MLV_DUMP="${RES_PATH}/mlv_dump" #Path to mlv_dump location.
+	RAW_DUMP="${RES_PATH}/raw2dng" #Path to raw2dng location.
+	CR_HDR="${RES_PATH}/cr2hdr" #Path to cr2hdr location.
+	MLV_BP="${RES_PATH}/mlv2badpixels.sh"
+	PYTHON_BAL="${RES_PATH}/balance.py"
+	PYTHON_SRANGE="${RES_PATH}/sRange.py"
+	BAL="${PYTHON} ${PYTHON_BAL}"
+	SRANGE="${PYTHON} ${PYTHON_SRANGE}"
+}
+setPaths #Set all the paths using the current RES_PATH.
+
+OUTDIR="./raw_conv"
 isOutGen=false
 
 #OUTPUT
@@ -140,13 +147,18 @@ DEPENDENCIES: If you don't use a feature, you don't need the dependency, though 
 
 OPTIONS, BASIC:
 	-v   version - Print out version string.
-	-o<path>   OUTDIR - The path in which files will be placed (no space btwn -o and path).
-	-M<path>   MLV_DUMP - The path to mlv_dump (no space btwn -M and path). Default is './mlv_dump'.
-	-R<path>   RAW_DUMP - The path to raw2dng (no space btwn -M and path). Default is './raw2dng'.
-	-y<path>   PYTHON - The path or command used to invoke Python. Defaults to python3.
-	-B<path>   MLV_BP - The path to mlv2badpixels.sh (by dfort). Default is './mlv2badpixels.sh'.
+	-h   help - Print out this help page.
 	
-	-T[int]    Max process threads, for multithreaded parts of the program. Defaults to 8.
+	-o<path>   OUTDIR - The path in which files will be placed (no space btwn -o and path).		
+	-P<path>   RES_PATH - The path in which all manual dependencies can be found. Will check ~/convmlv.conf, then the current directory.
+	  --> In 'convmlv.conv', this can be specified using a line 'RES_PATH <path>'.
+	
+	-M<path>   MLV_DUMP - The path to mlv_dump. Default is '${RES_PATH}/mlv_dump'.
+	-R<path>   RAW_DUMP - The path to raw2dng. Default is '${RES_PATH}/raw2dng'.
+	-y<path>   PYTHON - The path or command used to invoke Python. Defaults to 'python3' on Linux, 'python' otherwise.
+	-B<path>   MLV_BP - The path to mlv2badpixels.sh (by dfort). Default is '${RES_PATH}/mlv2badpixels.sh'.
+	
+	-T[int]    THREADS - Max process threads, for multithreaded parts of the program. Defaults to 8.
 	
 	
 OPTIONS, OUTPUT:
@@ -281,6 +293,29 @@ mkdirS() {
 	
 }
 
+evalConf() { #Run BEFORE argument parsing.
+	while IFS="" read -r line || [[ -n "$line" ]]; do
+		if [[ `echo "${line}" | cut -c1-1` == "#" ]]; then continue; fi
+		case `echo "${line}" | cut -d$' ' -f1` in
+			"OUTDIR") OUTDIR=`echo "${line}" | cut -d$' ' -f2`
+			;;
+			"RES_PATH") RES_PATH=`echo "${line}" | cut -d$' ' -f2`; setPaths
+			;;
+			"MLV_DUMP") MLV_DUMP=`echo "${line}" | cut -d$' ' -f2`
+			;;
+			"RAW_DUMP") RAW_DUMP=`echo "${line}" | cut -d$' ' -f2`
+			;;
+			"PYTHON") PYTHON=`echo "${line}" | cut -d$' ' -f2`; setPaths
+			;;
+			"MLV_BP") MLV_BP=`echo "${line}" | cut -d$' ' -f2`
+			;;
+			"THREADS") THREADS=`echo "${line}" | cut -d$' ' -f2`
+			;;
+		esac
+	done < "${HOME}/convmlv.conf"
+	#~ echo "$OUTDIR"
+}
+
 parseArgs() { #Fixing this would be difficult.
 	if [ ${ARG} == "-e" ]; then #This very special arguments would fuck everything up if left to roam free...
 		SETTINGS_OUTPUT=true
@@ -288,11 +323,11 @@ parseArgs() { #Fixing this would be difficult.
 		continue
 	fi
 	if [ `echo "${ARG}" | cut -c1-1` = "-" ]; then
-		if [ `echo "${ARG}" | cut -c2-2` = "H" ]; then
+		if [ `echo "${ARG}" | cut -c2-2` = "H" ]; then #
 			HIGHLIGHT_MODE=`echo "${ARG}" | cut -c3-3`
 			let ARGNUM--
 		fi
-		if [ `echo "${ARG}" | cut -c2-2` = "s" ]; then
+		if [ `echo "${ARG}" | cut -c2-2` = "s" ]; then #
 			PROXY_SCALE=`echo "${ARG}" | cut -c3-${#ARG} >/dev/null 2>/dev/null` #Might error. We'll check, no worries.
 			if [ -z $PROXY_SCALE ]; then
 				echo -e "\e[0;31m\e[1mNo proxy scale set!\e[0m\n"
@@ -300,21 +335,17 @@ parseArgs() { #Fixing this would be difficult.
 			fi
 			let ARGNUM--
 		fi
-		#~ if [ `echo "${ARG}" | cut -c2-2` = "e" ]; then
-			#~ SETTINGS_OUTPUT=true
-			#~ let ARGNUM--
-		#~ fi
-		if [ `echo ${ARG} | cut -c2-2` = "u" ]; then
+		if [ `echo ${ARG} | cut -c2-2` = "u" ]; then #
 			DUAL_ISO=true
 			let ARGNUM--
 		fi
-		if [ `echo ${ARG} | cut -c2-2` = "E" ]; then
+		if [ `echo ${ARG} | cut -c2-2` = "E" ]; then #
 			RANGE_BASE=$(echo ${ARG} | cut -c3-${#ARG})
 			
 			isFR=false
 			let ARGNUM--
 		fi
-		if [ `echo ${ARG} | cut -c2-2` = "F" ]; then
+		if [ `echo ${ARG} | cut -c2-2` = "F" ]; then #
 			DARKFRAME=`echo ${ARG} | cut -c3-${#ARG}`
 			let ARGNUM--
 		fi
@@ -357,7 +388,7 @@ parseArgs() { #Fixing this would be difficult.
 		fi
 		if [ `echo ${ARG} | cut -c2-2` = "y" ]; then
 			PYTHON=`echo ${ARG} | cut -c3-${#ARG}`
-			BAL="${PYTHON} balance.py"
+			setPaths #Set all the paths with the new PYTHON.
 			
 			let ARGNUM--
 		fi
@@ -379,6 +410,12 @@ parseArgs() { #Fixing this would be difficult.
 		fi
 		if [ `echo ${ARG} | cut -c2-2` = "M" ]; then
 			MLV_DUMP=`echo ${ARG} | cut -c3-${#ARG}`
+			let ARGNUM--
+		fi
+		if [ `echo ${ARG} | cut -c2-2` = "P" ]; then
+			RES_PATH=`echo ${ARG} | cut -c3-${#ARG}`
+			setPaths #Set all the paths with the new RES_PATH.
+			
 			let ARGNUM--
 		fi
 		if [ `echo ${ARG} | cut -c2-2` = "R" ]; then
@@ -509,8 +546,8 @@ parseArgs() { #Fixing this would be difficult.
 
 checkDeps() {
 		if [ ! -f $ARG ] && [ ! -d $ARG ]; then
-			echo -e "\e[0;31m\e[1mFile ${ARG} not found!\e[0m\n"
-			exit 1
+			echo -e "\e[0;31m\e[1mFile ${ARG} not found! Skipping file.\e[0m\n"
+			continue
 		fi
 		
 		if [ ! -d $ARG ] && [ $(echo $(wc -c ${ARG} | cut -d " " -f1) / 1000 | bc) -lt 1000 ]; then #Check that the file is not too small.
@@ -534,28 +571,41 @@ checkDeps() {
 			fi
 		fi
 		
+		#Essentials
+		if [ ! -f $MLV_DUMP ]; then
+			echo -e "\e[0;31m\e[1m${MLV_DUMP} not found! Execution will halt.\e[0m\\n\tGet it here: http://www.magiclantern.fm/forum/index.php?topic=7122.0.\n"
+			isExit=true
+		fi
+		
+		if [ ! -f $PYTHON_SRANGE ]; then
+			echo -e "\e[0;31m\e[1m${PYTHON_SRANGE} not found! Execution will halt.\e[0m\\n\tDownload from convmlv repository.\n"
+			isExit=true
+		fi
+		
 		if [ ! -f $DARKFRAME ] && [ $DARKFRAME != "" ]; then
-			echo -e "\e[0;31m\e[1mDarkframe MLV ${DARKFRAME} not found!\e[0m\n"
-			exit 1
+			echo -e "\e[0;31m\e[1mDarkframe ${DARKFRAME} not found!\e[0m\n"
+			isExit=true
 		fi
 		
 		if [ ! -f $PYTHON_BAL ]; then
-			echo -e "\e[0;31m\e[1mAWB ${PYTHON_BAL} not found! Execution will continue without AWB.\e[0m\n"
+			echo -e "\e[0;31m\e[1m${PYTHON_BAL} not found! Execution will continue without AWB.\e[0m\n\tDownload from convmlv repository.\n"
 		fi
 		
-		if [ ! -f $MLV_DUMP ]; then
-			echo -e "\e[0;31m\e[1m${MLV_DUMP} not found!\e[0m\n"
-			exit 1
-		fi
 		if [ ! -f $RAW_DUMP ]; then
-			echo -e "\e[0;31m\e[1m${RAW_DUMP} not found! Execution will continue without .RAW processing capability.\e[0m\n"
+			echo -e "\e[0;31m\e[1m${RAW_DUMP} not found! Execution will continue without .RAW processing capability.\e[0m\\n\tGet it here: http://www.magiclantern.fm/forum/index.php?topic=5404.0\n"
 		fi
 		
 		if [ ! -f $MLV_BP ]; then
-			echo -e "\e[0;31m\e[1m${MLV_BP} not found! Execution will continue without badpixel removal.\e[0m\n"
+			echo -e "\e[0;31m\e[1m${MLV_BP} not found! Execution will continue without badpixel removal capability.\e[0m\n\tGet it here: https://bitbucket.org/daniel_fort/ml-focus-pixels/src\n"
 		fi
+		
 		if [ ! -f $CR_HDR ]; then
-			echo -e "\e[0;31m\e[1m${CR_HDR} not found! Execution will continue without Dual ISO processing capability.\e[0m\n"
+			echo -e "\e[0;31m\e[1m${CR_HDR} not found! Execution will continue without Dual ISO processing capability.\e[0m\n\tGet it here: http://www.magiclantern.fm/forum/index.php?topic=7139.0\n"
+		fi
+		
+		if [[ $isExit == true ]]; then
+			echo -e "\e[0;33m\e[1mPlace all downloaded files in the Current Directory, or specify paths with relevant arguments (see 'convmlv -h')!\e[0m\n"
+			exit 1
 		fi
 }
 
@@ -583,17 +633,19 @@ EOF
 }
 
 mlvSet() {
-	FPS=`${MLV_DUMP} -v -m ${ARG} | grep FPS | awk 'FNR == 1 {print $3}'`
+	camDump=$(${MLV_DUMP} -v -m ${ARG}) #Read it in *once*; otherwise it's unbearably slow on external media.
+	
+	FPS=`echo "$camDump" | grep FPS | awk 'FNR == 1 {print $3}'`
 			
-	CAM_NAME=`${MLV_DUMP} -v -m ${ARG} | grep 'Camera Name' | cut -d "'" -f 2`
-	FRAMES=`${MLV_DUMP} ${ARG} | awk '/Processed/ { print $2; }'` #Use actual processed frames as opposed to what the sometimes incorrect metadata thinks.
-	ISO=`${MLV_DUMP} -v -m ${ARG} | grep 'ISO' | sed 's/[[:alpha:] ]*:        //' | cut -d$'\n' -f2`
-	APERTURE=`${MLV_DUMP} -v -m ${ARG} | grep 'Aperture' | sed 's/[[:alpha:] ]*:    //' | cut -d$'\n' -f1`
-	LEN_FOCAL=`${MLV_DUMP} -v -m ${ARG} | grep 'Focal Len' | sed 's/[[:alpha:] ]*:   //' | cut -d$'\n' -f1`
-	SHUTTER=`${MLV_DUMP} -v -m ${ARG} | grep 'Shutter' | sed 's/[[:alpha:] ]*:   //' | grep -oP '\(\K[^)]+' |  cut -d$'\n' -f1`
-	REC_DATE=`${MLV_DUMP} -v -m ${ARG} | grep 'Date' | sed 's/[[:alpha:] ]*:        //' | cut -d$'\n' -f1`
-	REC_TIME=`${MLV_DUMP} -v -m ${ARG} | grep 'Time:        [0-2][0-9]\:*' | sed 's/[[:alpha:] ]*:        //' | cut -d$'\n' -f1`
-	KELVIN=`${MLV_DUMP} -v -m ${ARG} | grep 'Kelvin' | sed 's/[[:alpha:] ]*:   //' | cut -d$'\n' -f1`
+	CAM_NAME=`echo "$camDump" | grep 'Camera Name' | cut -d "'" -f 2`
+	FRAMES=`echo "$camDump" | awk '/Processed/ { print $2; }'` #Use actual processed frames as opposed to what the sometimes incorrect metadata thinks.
+	ISO=`echo "$camDump" | grep 'ISO' | sed 's/[[:alpha:] ]*:        //' | cut -d$'\n' -f2`
+	APERTURE=`echo "$camDump" | grep 'Aperture' | sed 's/[[:alpha:] ]*:    //' | cut -d$'\n' -f1`
+	LEN_FOCAL=`echo "$camDump" | grep 'Focal Len' | sed 's/[[:alpha:] ]*:   //' | cut -d$'\n' -f1`
+	SHUTTER=`echo "$camDump" | grep 'Shutter' | sed 's/[[:alpha:] ]*:   //' | grep -oP '\(\K[^)]+' |  cut -d$'\n' -f1`
+	REC_DATE=`echo "$camDump" | grep 'Date' | sed 's/[[:alpha:] ]*:        //' | cut -d$'\n' -f1`
+	REC_TIME=`echo "$camDump" | grep 'Time:        [0-2][0-9]\:*' | sed 's/[[:alpha:] ]*:        //' | cut -d$'\n' -f1`
+	KELVIN=`echo "$camDump" | grep 'Kelvin' | sed 's/[[:alpha:] ]*:   //' | cut -d$'\n' -f1`
 }
 
 if [ $# == 0 ]; then
@@ -603,6 +655,8 @@ fi
 
 ARGNUM=$#
 for ARG in $*; do
+#Evaluate convmlv.conf configuration file. Very limited for now.
+	evalConf
 #Evaluate command line arguments. ARGNUM decrements to keep track of how many files there are to process.
 	parseArgs # <-- Has a continue statement inside of it if we haven't reached the output.
 #Check that things exist.
@@ -785,34 +839,52 @@ for ARG in $*; do
 				REAL_FRAMES=`${MLV_DUMP} ${REAL_MLV} | awk '/Processed/ { print $2; }'`
 			fi
 			
-			fileRanges=(`echo $($SRANGE $REAL_FRAMES $THREADS)`)
-			
-			$MLV_DUMP $REAL_MLV $DARK_PROC -o "${TMP}/${TRUNC_ARG}_" --dng $smooth --batch | {
-				while IFS= read -r line; do
-					output=$(echo $line | grep -Po 'V.*A' | cut -d':' -f2 | cut -d$' ' -f1)
-					if [[ $output == "" ]]; then
-						continue;
-					fi
-					cur=$(echo "$(echo "$output" | cut -d'/' -f1) + $(echo "$FRAME_START - 1" | bc)" | bc)
-					echo -e "\e[2K\rDumping MLV to DNG: Frame ${cur}/${FRAME_END}\c"
-				done
-				echo -e "\e[2K\rDumping MLV to DNG: Frame ${FRAME_END}/${FRAME_END}\c" #Ensure it looks right at the end.
-				echo -e "\n"
-			} #Progress Bar
+			fileRanges=(`echo $($SRANGE $REAL_FRAMES $THREADS)`) #Get an array of frame ranges from the amount of frames and threads. I used a python script for this.
+			#Looks like this: 0-1 2-2 3-4 5-5 6-7 8-8 9-10. Put that in an array.
+
+			devDNG() { #Takes n arguments: 1{}, the frame range 2$MLV_DUMP 3$REAL_MLV 4$DARK_PROC 5$tmpOut 6$smooth 7$TMP 8$FRAME_END 9$TRUNC_ARG
+				tmpOut=${7}/${1} #Each output will number from 0, so give each its own folder.
+				mkdir -p $tmpOut
+				
+				start=$(echo "$1" | cut -d'-' -f1)
+				end=$(echo "$1" | cut -d'-' -f2) #Get start and end frames from the frame range
+				
+				$2 $3 $4 -o "${tmpOut}/${9}_" -f ${1} $6 --dng --batch | { #mlv_dump command. Uses frame range.
+					lastCur=0
+					while IFS= read -r line; do
+						output=$(echo $line | grep -Po 'V.*A' | cut -d':' -f2 | cut -d$' ' -f1) #Hacked my way to the important bit.
+						if [[ $output == "" ]]; then continue; fi #If there's no important bit, don't print.
 						
-			#Renumber DNGs if needed.
-			if [ $isFR == false ]; then
-				count=$FRAME_START
-				tmpOut=${TMP}/tmpOut #Use temporary folder.
-				mkdir $tmpOut
-				for dng in ${TMP}/*.dng; do
+						cur=$(echo "$output" | cut -d'/' -f1) #Current frame.
+						if [[ $cur == $lastCur ]] || [[ $cur -gt $end ]] || [[ $cur -lt $start ]]; then continue; fi #Turns out, it goes through all the frames, even if cutting the frame range. So, clamp it!
+						
+						lastCur=$cur #It likes to repeat itself.
+						echo -e "\e[2K\rMLV to DNG: Frame ${cur}/${8}\c" #Print out beautiful progress bar, in parallel!
+					done
+					
+				} #Progress Bar
+			}
+
+			export -f devDNG #Export to run in subshell.
+
+			for range in "${fileRanges[@]}"; do echo $range; done | #For each frame range, assign a thread.
+				xargs -I {} -P $THREADS -n 1 \
+					bash -c "devDNG '{}' '$MLV_DUMP' '$REAL_MLV' '$DARK_PROC' '$tmpOut' '$smooth' '$TMP' '$FRAME_END' '$TRUNC_ARG'"
+			#Since devDNG must run in a subshell, globals don't follow. Must pass *everything* in.
+					
+			echo -e "\e[2K\rMLV to DNG: Frame ${FRAME_END}/${FRAME_END}\c" #Ensure it looks right at the end.
+			echo -e "\n"
+
+			count=$FRAME_START
+			for range in "${fileRanges[@]}"; do #Go through the subfolders sequentially
+				tmpOut=${TMP}/${range} #Use temporary folder. It will be named the same as the frame range.
+				for dng in ${tmpOut}/*.dng; do
 					if [ $count -gt $FRAME_END ]; then echo "ERROR! Count greater than end!"; fi
-					mv $dng $(printf "${tmpOut}/${TRUNC_ARG}_%06d.dng" $count)
+					mv $dng $(printf "${TMP}/${TRUNC_ARG}_%06d.dng" $count) #Move dngs out sequentially, numbering them properly.
 					let count++
 				done
-				mv $tmpOut/* $TMP
-				rm -r $tmpOut
-			fi
+				rm -r $tmpOut #Remove the now empty subfolder
+			done
 			
 		elif [ $EXT == "RAW" ] || [ $EXT == "raw" ]; then
 			echo -e $rawStat

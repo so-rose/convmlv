@@ -4,7 +4,7 @@
 #~ Stats for .RAW files and naked DNG sequences, best as possible.
 #~ --> Only read the file once into a long string, as opposed to once per setting.
 
-#~ Read from Config File (update confEval).
+#~ Better reading from Config File (update confEval).
 
 #~ .darkframe generation.
 
@@ -161,9 +161,9 @@ OPTIONS, BASIC:
 	--mlv-dump <path>	MLV_DUMP - The path to mlv_dump.
 	--raw-dump <path>	RAW_DUMP - The path to raw2dng.
 	--badpixels <path>	MLV_BP - The path to mlv2badpixels.sh (by dfort).
-	--cr-hdr <path>		CR_HDR
-	--srange <path>	 	SRANGE
-	--balance <path>	BAL
+	--cr-hdr <path>		CR_HDR - The path to cr2hdr.
+	--srange <path>	 	SRANGE - The path to sRange.py.
+	--balance <path>	BAL - The path to balance.py.
 	--python <path>		PYTHON - The path or command used to invoke Python.
 	
 	-T, --threads [int]	THREADS - Override amount of utilized process threads
@@ -682,7 +682,7 @@ checkDeps() {
 		
 		
 		if [[ $isExit == true ]]; then
-			echo -e "\e[0;33m\e[1mPlace all downloaded files in the Current Directory, or specify paths with relevant arguments (see 'convmlv -h')!\e[0m\n"
+			echo -e "\e[0;33m\e[1mPlace all downloaded files in the Current Directory, or specify paths with relevant arguments (see 'convmlv -h')! Also, make sure they're executable (run 'chmod +x file').\e[0m\n"
 			exit 1
 		fi
 }
@@ -1000,10 +1000,10 @@ for ARG in $@; do #All remaining mass-arguments
 			for range in "${fileRanges[@]}"; do echo $range; done | #For each frame range, assign a thread.
 				xargs -I {} -P $THREADS -n 1 \
 					bash -c "devDNG '{}' '$MLV_DUMP' '$REAL_MLV' '$DARK_PROC' '$tmpOut' '$smooth' '$TMP' '$FRAME_END' '$TRUNC_ARG'"
+			
 			#Since devDNG must run in a subshell, globals don't follow. Must pass *everything* in.
 			echo -e "\e[2K\rMLV to DNG: Frame ${FRAME_END}/${FRAME_END}\c" #Ensure it looks right at the end.
 			echo -e "\n"
-			#~ exit
 
 			count=$FRAME_START
 			for range in "${fileRanges[@]}"; do #Go through the subfolders sequentially
@@ -1015,7 +1015,6 @@ for ARG in $@; do #All remaining mass-arguments
 				done
 				rm -r $tmpOut #Remove the now empty subfolder
 			done
-			#~ exit
 			
 		elif [ $EXT == "RAW" ] || [ $EXT == "raw" ]; then
 			echo -e $rawStat

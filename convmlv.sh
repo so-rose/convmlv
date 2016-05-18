@@ -1,14 +1,19 @@
 #!/bin/bash
 
 #TODO:
-#~ Stats for .RAW files and DNG sequences, best as possible.
+#~ Stats for .RAW files and naked DNG sequences, best as possible.
 #~ --> Only read the file once into a long string, as opposed to once per setting.
+
+#~ Read from Config File (update confEval).
+
+#~ .darkframe generation.
 
 #~ Better Preview:
 #~ --> Essentially, a different module (like -e) for seeing, not developing, footage.
 #~ --> To start, an option allowing one to see a single frame, developed. -DONE
 
 
+#BUG: Relative OUTDIR makes baxpixel generation fail if ./mlv2badpixels.sh doesn't exist. Fixed on Linux only.
 #MAYBE FIXED BUG: Run on all Charleston files; determine what's making Black Level not appear sometimes.
 
 
@@ -41,7 +46,7 @@ if [[ $OSTYPE == "linux-gnu" ]]; then
 else
 	THREADS=4
 fi
-#sysctl -n hw.ncpu for Mac
+#sysctl -n hw.ncpu for Mac?
 
 #DEPENDENCIES
 DEB_DEPS="imagemagick dcraw ffmpeg python3 python3-pip exiftool" #Dependency package names (Debian). List with -K option.
@@ -124,144 +129,151 @@ LUT=""
 isLUT=false
 
 help() {
-cat << EOF
+less -R << EOF
 Usage:
-	$(echo -e "\033[1m./convmlv.sh\033[0m [OPTIONS] \033[2mmlv_files\033[0m")
+	$(echo -e "\033[1m./convmlv.sh\033[0m [FLAGS] [OPTIONS] \033[2mfiles\033[0m")
 	
 INFO:
-	A script allowing you to convert .MLV, .RAW, or a folder with a DNG sequence into a sequence/movie with optional proxies. Images
-	are auto compressed. Many useful options are exposed, including formats (EXR by default).
+	A script allowing you to develop ML files into workable formats. Many useful options are exposed.
+	  -->Image Defaults: Compressed 16-bit Linear EXR.
+	  -->Acceptable Inputs: MLV, RAW, DNG Folder.
+	  -->Option Input: From command line or config file.
 	
 $(echo -e "VERSION: ${VERSION}")
 	
-DEPENDENCIES: If you don't use a feature, you don't need the dependency, though it's best to download them all.
-	-mlv_dump: For DNG extraction from MLV. http://www.magiclantern.fm/forum/index.php?topic=7122.0
+MANUAL DEPENDENCIES:
+	-mlv_dump: Required. http://www.magiclantern.fm/forum/index.php?topic=7122.0
 	-raw2dng: For DNG extraction from RAW. http://www.magiclantern.fm/forum/index.php?topic=5404.0
 	-mlv2badpixels.sh: For bad pixel removal. https://bitbucket.org/daniel_fort/ml-focus-pixels/src
-	-dcraw: For RAW development.
-	-ffmpeg: For video creation.
-	-ImageMagick: Used for making proxy sequence.
-	-Python 3 + libs: Used for auto white balance.
-	-exiftool: Used in mlv2badpixels.sh.
-
+	-cr2hdr: For Dual ISO Development. Two links: http://www.magiclantern.fm/forum/index.php?topic=16799.0
+	-sRange.py: Required. See convmlv repository.
+	-balance.py: For Auto White Balance. See convmlv repository.
 
 OPTIONS, BASIC:
-	-v   version - Print out version string.
-	-h   help - Print out this help page.
+	-v, --version		version - Print out version string.
+	-h, --help		help - Print out this help page.
 	
-	-o<path>   OUTDIR - The path in which files will be placed (no space btwn -o and path).		
-	-P<path>   RES_PATH - The path in which all manual dependencies can be found. Will check ~/convmlv.conf, then the current directory.
-	  --> In 'convmlv.conv', this can be specified using a line 'RES_PATH <path>'.
+	-C, --config		CONFIG - Designates config file to use.
 	
-	-M<path>   MLV_DUMP - The path to mlv_dump. Default is '${RES_PATH}/mlv_dump'.
-	-R<path>   RAW_DUMP - The path to raw2dng. Default is '${RES_PATH}/raw2dng'.
-	-y<path>   PYTHON - The path or command used to invoke Python. Defaults to 'python3' on Linux, 'python' otherwise.
-	-B<path>   MLV_BP - The path to mlv2badpixels.sh (by dfort). Default is '${RES_PATH}/mlv2badpixels.sh'.
+	-o, --outdir <path>	OUTDIR - The path in which files will be placed.
+	-P, --res-path <path>	RES_PATH - The path in which all manual dependencies are looked for.
 	
-	-T[int]    THREADS - Max process threads, for multithreaded parts of the program. Defaults to 8.
+	--mlv-dump <path>	MLV_DUMP - The path to mlv_dump.
+	--raw-dump <path>	RAW_DUMP - The path to raw2dng.
+	--badpixels <path>	MLV_BP - The path to mlv2badpixels.sh (by dfort).
+	--cr-hdr <path>		CR_HDR
+	--srange <path>	 	SRANGE
+	--balance <path>	BAL
+	--python <path>		PYTHON - The path or command used to invoke Python.
+	
+	-T, --threads [int]	THREADS - Override amount of utilized process threads
 	
 	
 OPTIONS, OUTPUT:
-	-i   IMAGE - Specify to create an image sequence (EXR by default).
+	-i			IMAGE - Will output image sequence.
 	
-	-f[0:3]   IMG_FMT - Create a sequence of <format> format. 0 is default.
+	-t [0:3]		IMG_FMT - Specified image output format.
 	  --> 0: EXR (default), 1: TIFF, 2: PNG, 3: Cineon (DPX)."
-
-	-c   COMPRESS - Specify to turn ***off*** automatic image compression. Auto compression options otherwise used:
-	  --> TIFF: ZIP (best for 16-bit), PIZ for EXR (best for grainy images), PNG: lvl 9 (zlib deflate), DPX: RLE.
 	
-	-m   MOVIE - Specify to create a Prores4444 video.
+	-m			MOVIE - Will output a Prores4444 file.
 	
-	-p[0:3]   PROXY - Specifies the proxy mode. 0 is default.
-	  --> 0: No proxies. 1: H.264 proxy. 2: JPG proxy sequence. 3: Both.
-	  --> JPG proxy won't be developed w/o -i. H.264 proxy will be developed no matter what, if specified.
+	-p [0:3]		PROXY - Create proxies alongside main output.
+	  --> 0: No proxies (Default). 1: H.264 proxy. 2: JPG proxy sequence. 3: Both.
+	  --> JPG proxy *won't* be developed w/o IMAGE. H.264 proxy *will* be developed no matter what, if specified.
 	
-	-s[0%:100%]   PROXY_SCALE - the size, in %, of the proxy output.
-	  --> Use -s<percentage>% (no space). 50% is default.
+	-s [0%:100%]		PROXY_SCALE - the size, in %, of the proxy output.
+	  --> 50% is default.
 	
-	-k   KEEP_DNGS - Specify if you want to keep the DNG files.
-	  --> If you run convmlv on the dng_<name> folder, you will reuse those DNGs - no need to redevelop!
+	-k			KEEP_DNGS - Specify if you want to keep the DNG files.
+	  --> Run convmlv on the top level folder of former output to reuse saved DNGs from that run!
 	  
-	-E<range>   FRAME_RANGE - Specify to process only this frame range.
-	  --> Use s and e appropriately to specify start and end.
-	  --> <range> must be written as <start>-<end>, indexed from 0 to (# of frames - 1).
-	  --> If you write a single number, only that frame will be developed.
+	-r <start>-<end>	FRAME_RANGE - Specify to output this frame range only.
+	  --> You may use s and e, such that s = start frame, e = end frame.
+	  --> Indexed from 0 to (# of frames - 1).
+	  --> A single number may be writted to develop that frame only.
+	
+	
+	--uncompress		UNCOMP - Turns off lossless image compression. Otherwise:
+	  --> TIFF: ZIP, EXR: PIZ, PNG: lvl 9 (zlib deflate), DPX: RLE.
 	
 	
 OPTIONS, RAW DEVELOPMENT:
-	-d[0:3]   DEMO_MODE - DCraw demosaicing mode. Higher modes are slower. 1 is default.
-	  --> Use -d<mode> (no space). 0: Bilinear. 1: VNG (default). 2: PPG. 3: AHD.
+	-d [0:3]		DEMO_MODE - Demosaicing algorithm. Higher modes are slower + better.
+	  --> 0: Bilinear. 1: VNG (default). 2: PPG. 3: AHD.
 	
-	-r   FOUR_COLOR - Interpolate as four colors. Can often fix weirdness with VNG/AHD.
+	-f	FOUR_COLOR - Interpolate as RGBG. Can often fix weirdness with VNG/AHD.
 	
-	-H[0:9]   HIGHLIGHT_MODE - 2 looks the best, but can break. 0 is a safe bet.
-	  --> Use -H<number> (no space). 0 clips. 1 allows colored highlights. 2 adjusts highlights to grey.
-	  --> 3 through 9 do highlight reconstruction with a certain tone. See dcraw documentation.
+	-H [0:9]		HIGHLIGHT_MODE - Highlight management options.
+	  --> 0: White, clipped highlights. 1: Clipped, colored highlights. 2: Similar to 1, but adjusted to grey.
+	  --> 3-9: Highlight reconstruction. Can cause flickering; 1 or 2 usually give better results.
 	
-	-C[0:3]   CHROMA_SMOOTH - Apply chroma smoothing to the footage, which may help ex. with noise/bad pixels.
+	-c [0:3]		CHROMA_SMOOTH - Apply shadow/highlight chroma smoothing to the footage.
 	  --> 0: None (default). 1: 2x2. 2: 3x3. 3: 5x5.
-	  --> Only applied to .MLV files.
+	  --> MLV Only.
 	
-	-n[int]   NOISE_REDUC - This is the threshold of wavelet denoising - specify to use.
-	  --> Use -n<number>. Defaults to no denoising. 150 tends to be a good setting; 350 starts to look strange.
+	-n [int]		NOISE_REDUC - Apply wavelet denoising.
+	  --> Default: None. Subtle: 50. Medium: 100. Strong: 200.
 	
-	-g[0:4]   SPACE - This is output color space. 0 is default.
-	  --> Use -g<mode> (no space). 0: Linear. 1: 2.2 (Adobe RGB). 2: 1.8 (ProPhoto RGB). 3: sRGB. 4: BT.709.
+	-g [0:4]		SPACE - Output color transformation.
+	  --> 0: Linear. 1: 2.2 (Adobe RGB). 2: 1.8 (ProPhoto RGB). 3: sRGB. 4: BT.709.
 	
-	-S   SHALLOW - Specifying this option will create an 8-bit output instead of a 16-bit output.
-	  --> It'll kind of ruin the point of RAW, though....
+	--shallow 		SHALLOW - Output 8-bit files.
 	
 	
 OPTIONS, COLOR:
-	-w[0:2]   WHITE - This is a modal white balance setting. Defaults to 1.
-	  --> Use -w<mode> (no space).
-	  --> 0: Auto WB (Requires Python Deps). 1: Camera WB. 2: No Change.
+	-w [0:2]		WHITE - This is a modal white balance setting.
+	  --> 0: Auto WB. 1: Camera WB (default). 2: No Change.
 	  
-	-L   WHITE_SCALE - Specify to allow channels to clip as a result of any white balance.
-	  --> Information loss occurs in certain situations.
+	-l <path>		LUT - Specify a LUT to apply.
+	  --> Supports cube, 3dl, dat, m3d.
+	  --> LUT cannot be applied to EXR sequences.
 	  
-	-t[int]   SATPOINT - Specify the 14-bit saturation point of your camera.
+	-S [int]		SATPOINT - Specify the 14-bit saturation point of your camera.
 	  --> Lower if -H1 yields purple highlights. Must be correct for highlight reconstruction.
 	  --> Determine using the max value of 'dcraw -D -j -4 -T'
 	
-	-A[int]   WHITE_SPD - This is the amount of samples from which AWB will be calculated.
-	  -->About this many frames, averaged over the course of the sequence, will be used to do AWB.
+	--white-speed [int]	WHITE_SPD - Samples used to calculate AWB
 	
-	-l<path>   LUT - This is a path to the 3D LUT. Specify the path to the LUT to use it.
-	  --> Compatibility determined by ffmpeg (.cube is supported).
-	  --> LUT cannot be applied to EXR sequences.
-	  --> Path to LUT (no space between -l and path).
+	--allow-white-clip	WHITE_SCALE - Let White Balance multipliers clip.
 	
 	
 OPTIONS, FEATURES:
-	-u    DUAL_ISO - Process file as dual ISO.
+	-u			DUAL_ISO - Process as dual ISO.
 	
-	-b   BADPIXELS - Fix focus pixels issue using dfort's script.
-	  --> His file can be found at https://bitbucket.org/daniel_fort/ml-focus-pixels/src.
+	-b			BADPIXELS - Fix focus pixels issue using dfort's script.
 	
-	-a<path>   BADPIXEL_PATH - Use, appending to the generated one, your own .badpixels file.
-	  --> Use -a<path> (no space). How to: http://www.dl-c.com/board/viewtopic.php?f=4&t=686
+	-a <path>		BADPIXEL_PATH - Use your own .badpixels file.
+	  --> How to: http://www.dl-c.com/board/viewtopic.php?f=4&t=686
 	
-	-F<path>   DARKFRAME - This is the path to the dark frame MLV, for noise reduction.
-	  --> This is a noise reduction technique: Record 5 sec w/lens cap on & same settings as footage.
-	  --> Pass in that MLV file (not .RAW) as <path> to get noise reduction on all passed MLV files.
+	-F <path>		DARKFRAME - This is the path to a "dark frame MLV"; effective for noise reduction.
+	  --> How to: Record 5 sec w/lens cap on & same settings as footage. Pass MLV in here.
 	  --> If the file extension is '.darkframe', the file will be used as the preaveraged dark frame.
+	
+	-R <path>		dark_out - Specify to create a .darkframe file from passed in MLV.
+	 --> Outputs <arg>.darkframe file to <path>.
 	
 	
 OPTIONS, INFO:
-	-e   Output MLV settings.
-
-	-K   Debian Package Deps - Lists dependecies. Works with apt-get on Debian; should be similar elsewhere.
-	  --> No operations will be done.
-	  --> Example: sudo apt-get install $ (./convmlv -K)
+	-e			Output MLV settings.
 	
-	-Y   Python Deps - Lists Python dependencies. Works with pip.
-	  --> No operations will be done. 
-	  --> Example: sudo pip3 install $ (./convmlv -Y)
+	-K			Debian Package Deps - Output package dependecies.
+	  --> Install (Debian only): sudo apt-get install $ (./convmlv -K)
 	
-	-N  Manual Deps - Lists manual dependencies, which must be downloaded by hand.
-	  --> There's no automatic way to install these. See the forum post.
+	-Y			Python Deps - Lists Python dependencies. Works directly with pip.
+	  -->Install (Linux): sudo pip3 install $ (./convmlv -Y)
 	
+	-N			Manual Deps - Lists manual dependencies, which must be downloaded by hand.
+	  --> There's no automatic way to install these. See http://www.magiclantern.fm/forum/index.php?topic=16799.0 .
+	
+CONFIG FILE:
+	Next to each option is an uppercased item, ex. OUTDIR. In a convmlv config file, you can specify this option
+	in the following format, line by line:
+		<VARNAME> <VALUE>
+	
+	Some more notes regarding config files:
+		-The global config file, read every time, will be looked for in $HOME/convmlv.conf.
+		-Hashtags are considered comments, if and only if they are the first character in the line.
+		
 EOF
 }
 
@@ -272,11 +284,13 @@ mkdirS() {
 		
 	if [ -d $path ]; then
 		while true; do
-			read -p "Overwrite ${path}? [y/n] " yn
-			case $yn in
+			read -p "Overwrite ${path}? [y/n/q] " ynq
+			case $ynq in
 				[Yy]* ) echo -e ""; rm -rf $path; mkdir -p $path >/dev/null 2>/dev/null; break
 				;;
 				[Nn]* ) echo -e "\n\e[0;31m\e[1mDirectory ${path} won't be created.\e[0m\n"; cont=true; `$cleanup`; break
+				;;
+				[Qq]* ) echo -e "\n\e[0;31m\e[1mHalting execution. Directory ${path} won't be created.\e[0m\n"; exit 1;
 				;;
 				* ) echo -e "\e[0;31m\e[1mPlease answer yes or no.\e[0m\n"
 				;;
@@ -313,248 +327,309 @@ evalConf() { #Run BEFORE argument parsing.
 			;;
 		esac
 	done < "${HOME}/convmlv.conf"
-	#~ echo "$OUTDIR"
 }
 
-parseArgs() { #Fixing this would be difficult.
-	if [ ${ARG} == "-e" ]; then #This very special arguments would fuck everything up if left to roam free...
-		SETTINGS_OUTPUT=true
-		let ARGNUM--
-		continue
-	fi
-	if [ `echo "${ARG}" | cut -c1-1` = "-" ]; then
-		if [ `echo "${ARG}" | cut -c2-2` = "H" ]; then #
-			HIGHLIGHT_MODE=`echo "${ARG}" | cut -c3-3`
-			let ARGNUM--
-		fi
-		if [ `echo "${ARG}" | cut -c2-2` = "s" ]; then #
-			PROXY_SCALE=`echo "${ARG}" | cut -c3-${#ARG} >/dev/null 2>/dev/null` #Might error. We'll check, no worries.
-			if [ -z $PROXY_SCALE ]; then
-				echo -e "\e[0;31m\e[1mNo proxy scale set!\e[0m\n"
-				exit 1
-			fi
-			let ARGNUM--
-		fi
-		if [ `echo ${ARG} | cut -c2-2` = "u" ]; then #
-			DUAL_ISO=true
-			let ARGNUM--
-		fi
-		if [ `echo ${ARG} | cut -c2-2` = "E" ]; then #
-			RANGE_BASE=$(echo ${ARG} | cut -c3-${#ARG})
+parseArgs() { #Amazing new argument parsing!!!
+	longArg() { #Creates VAL
+		ret="${!OPTIND}"; OPTIND=$(( $OPTIND + 1 ))
+	}
+	while getopts "vh C o:P: T:  i t: m p: s: k r:  d: f H: c: n: g:  w: l: S:  u b a: F:  e K Y N    -:" opt; do
+		case "$opt" in
+			-) #Long Arguments
+				case ${OPTARG} in
+					outdir)
+						val="${!OPTIND}"; OPTIND=$(( $OPTIND + 1 ))
+						OUTDIR=$val
+						;;
+					version)
+						echo -e "convmlv v${VERSION}"
+						;;
+					help)
+						help
+						exit 0
+						;;
+					config)
+						echo "To Be Implemented!"
+						;;
+					res-path)
+						val="${!OPTIND}"; OPTIND=$(( $OPTIND + 1 ))
+						RES_PATH=$val
+						setPaths #Set all the paths with the new RES_PATH.
+						;;
+					mlv-dump)
+						val="${!OPTIND}"; OPTIND=$(( $OPTIND + 1 ))
+						MLV_DUMP=$val
+						;;
+					raw-dump)
+						val="${!OPTIND}"; OPTIND=$(( $OPTIND + 1 ))
+						RAW_DUMP=$val
+						;;
+					badpixels)
+						val="${!OPTIND}"; OPTIND=$(( $OPTIND + 1 ))
+						MLV_BP=$val
+						;;
+					cr-hdr)
+						val="${!OPTIND}"; OPTIND=$(( $OPTIND + 1 ))
+						CR_HDR=$val
+						;;
+					srange)
+						val="${!OPTIND}"; OPTIND=$(( $OPTIND + 1 ))
+						PYTHON_BAL=$val
+						setPaths #Must regen BAL
+						;;
+					balance)
+						val="${!OPTIND}"; OPTIND=$(( $OPTIND + 1 ))
+						PYTHON_SRANGE=$val
+						setPaths #Must regen SRANGE
+						;;
+					python)
+						val="${!OPTIND}"; OPTIND=$(( $OPTIND + 1 ))
+						PYTHON=$val
+						setPaths #Set all the paths with the new PYTHON.
+						;;
+					threads)
+						val="${!OPTIND}"; OPTIND=$(( $OPTIND + 1 ))
+						THREADS=$val
+						;;
+						
+						
+					uncompress)
+						isCOMPRESS=false
+						;;
+						
+						
+					shallow)
+						DEPTH=""
+						DEPTH_OUT="-depth 8"
+						;;
+						
+						
+					white-speed)
+						val="${!OPTIND}"; OPTIND=$(( $OPTIND + 1 ))
+						WHITE_SPD=$val
+						;;
+					allow-white-clip)
+						isScale=true
+						;;
+						
+					*)
+						echo "Invalid option: -$OPTARG" >&2
+						;;
+				esac
+				;;
 			
-			isFR=false
-			let ARGNUM--
-		fi
-		if [ `echo ${ARG} | cut -c2-2` = "F" ]; then #
-			DARKFRAME=`echo ${ARG} | cut -c3-${#ARG}`
-			let ARGNUM--
-		fi
-		if [ `echo ${ARG} | cut -c2-2` = "t" ]; then
-			tmpSat=`echo ${ARG} | cut -c3-${#ARG}`
-			SATPOINT="-S ${tmpSat}"
-			let ARGNUM--
-		fi
-		if [ `echo ${ARG} | cut -c2-2` = "r" ]; then
-			FOUR_COLOR="-f"
-			let ARGNUM--
-		fi
-		if [ `echo ${ARG} | cut -c2-2` = "f" ]; then
-			mode=`echo ${ARG} | cut -c3-3`
-			case ${mode} in
-				"0") IMG_FMT="exr"
-				;;
-				"1") IMG_FMT="tiff"
-				;;
-				"2") IMG_FMT="png"
-				;;
-				"3") IMG_FMT="dpx"
-				;;
-			esac
-			let ARGNUM--
-		fi
-		if [ `echo ${ARG} | cut -c2-2` = "C" ]; then
-			mode=`echo ${ARG} | cut -c3-3`
-			case ${mode} in
-				"0") CHROMA_SMOOTH="--no-cs"
-				;;
-				"1") CHROMA_SMOOTH="--cs2x2"
-				;;
-				"2") CHROMA_SMOOTH="--cs3x3"
-				;;
-				"3") CHROMA_SMOOTH="--cs5x5"
-				;;
-			esac
-			let ARGNUM--
-		fi
-		if [ `echo ${ARG} | cut -c2-2` = "y" ]; then
-			PYTHON=`echo ${ARG} | cut -c3-${#ARG}`
-			setPaths #Set all the paths with the new PYTHON.
 			
-			let ARGNUM--
-		fi
-		if [ `echo ${ARG} | cut -c2-2` = "v" ]; then
-			echo -e "convmlv v${VERSION}"
-			let ARGNUM--
-		fi
-		if [ `echo ${ARG} | cut -c2-2` = "m" ]; then
-			MOVIE=true
-			let ARGNUM--
-		fi
-		if [ `echo ${ARG} | cut -c2-2` = "c" ]; then
-			isCOMPRESS=false
-			let ARGNUM--
-		fi
-		if [ `echo ${ARG} | cut -c2-2` = "L" ]; then
-			isScale=true
-			let ARGNUM--
-		fi
-		if [ `echo ${ARG} | cut -c2-2` = "M" ]; then
-			MLV_DUMP=`echo ${ARG} | cut -c3-${#ARG}`
-			let ARGNUM--
-		fi
-		if [ `echo ${ARG} | cut -c2-2` = "P" ]; then
-			RES_PATH=`echo ${ARG} | cut -c3-${#ARG}`
-			setPaths #Set all the paths with the new RES_PATH.
+			v)
+				echo -e "convmlv v${VERSION}"
+				;;
+			h)
+				help
+				exit 0
+				;;
+			C)
+				echo "To Be Implemented!"
+				;;
+			o)
+				OUTDIR=${OPTARG}
+				;;
+			P)
+				RES_PATH=${OPTARG}
+				setPaths #Set all the paths with the new RES_PATH.
+				;;
+			T)
+				THREADS=${OPTARG}
+				;;
+				
 			
-			let ARGNUM--
-		fi
-		if [ `echo ${ARG} | cut -c2-2` = "R" ]; then
-			RAW_DUMP=`echo ${ARG} | cut -c3-${#ARG}`
-			let ARGNUM--
-		fi
-		if [ `echo ${ARG} | cut -c2-2` = "p" ]; then
-			PROXY=`echo ${ARG} | cut -c3-3`
-			case ${PROXY} in
-				"0") isJPG=false; isH264=false
+			i)
+				IMAGES=true
 				;;
-				"1") isJPG=false; isH264=true
+			t)
+				mode=${OPTARG}
+				case ${mode} in
+					"0") IMG_FMT="exr"
+					;;
+					"1") IMG_FMT="tiff"
+					;;
+					"2") IMG_FMT="png"
+					;;
+					"3") IMG_FMT="dpx"
+					;;
+				esac
 				;;
-				"2") isJPG=true; isH264=false
+			m)
+				MOVIE=true
 				;;
-				"3") isJPG=true; isH264=true
+			p)
+				PROXY=${OPTARG}
+				case ${PROXY} in
+					"0") isJPG=false; isH264=false
+					;;
+					"1") isJPG=false; isH264=true
+					;;
+					"2") isJPG=true; isH264=false
+					;;
+					"3") isJPG=true; isH264=true
+					;;
+				esac
 				;;
-			esac
-			let ARGNUM--
-		fi
-		if [ `echo ${ARG} | cut -c2-2` = "i" ]; then
-			IMAGES=true
-			let ARGNUM--
-		fi
-		if [ `echo ${ARG} | cut -c2-2` = "o" ]; then
-			OUTDIR=`echo ${ARG} | cut -c3-${#ARG}`
-			let ARGNUM--
-		fi
-		if [ `echo ${ARG} | cut -c2-2` = "a" ]; then
-			BADPIXEL_PATH=`echo ${ARG} | cut -c3-${#ARG}`
-			let ARGNUM--
-		fi
-		if [ `echo ${ARG} | cut -c2-2` = "n" ]; then
-			setting=`echo ${ARG} | cut -c3-${#ARG}`
-			NOISE_REDUC="-n ${setting}"
-			let ARGNUM--
-		fi
-		if [ `echo ${ARG} | cut -c2-2` = "T" ]; then
-			setting=`echo ${ARG} | cut -c3-${#ARG}`
-			THREADS=$setting
-			let ARGNUM--
-		fi
-		if [ `echo ${ARG} | cut -c2-2` = "h" ]; then
-			help
-			exit 0
-		fi
-		if [ `echo ${ARG} | cut -c2-2` = "d" ]; then
-			DEMO_MODE=`echo ${ARG} | cut -c3-3`
-			let ARGNUM--
-		fi
-		if [ `echo ${ARG} | cut -c2-2` = "g" ]; then
-			mode=`echo ${ARG} | cut -c3-3`
-			case ${mode} in
-				"0") GAMMA="1 1"; SPACE="0"
+			s)
+				PROXY_SCALE=${OPTARG}
 				;;
-				"1") GAMMA="2.2 0"; SPACE="2"
+			k)
+				KEEP_DNGS=true
 				;;
-				"2") GAMMA="1.8 0"; SPACE="4"
+			r)
+				RANGE_BASE=${OPTARG}
+				isFR=false
 				;;
-				"3") GAMMA="2.4 12.9"; SPACE="1"
-				;;
-				"4") GAMMA="2.222 4.5"; SPACE="0"
-				;;
-			esac
+				
 			
-			let ARGNUM--
-		fi
-		if [ `echo ${ARG} | cut -c2-2` = "S" ]; then
-			DEPTH=""
-			DEPTH_OUT=""
-			let ARGNUM--
-		fi
-		if [ `echo ${ARG} | cut -c2-2` = "w" ]; then
-			mode=`echo ${ARG} | cut -c3-3`
-			case ${mode} in
-				"0") CAMERA_WB=false; GEN_WHITE=true #Will generate white balance.
+			d)
+				DEMO_MODE=${OPTARG}
 				;;
-				"1") CAMERA_WB=true; GEN_WHITE=false;
+			f)
+				FOUR_COLOR="-f"
 				;;
-				"2") WHITE="-r 1 1 1 1"; CAMERA_WB=false; GEN_WHITE=false
+			H)
+				HIGHLIGHT_MODE=${OPTARG}
 				;;
-			esac
-		
-			let ARGNUM--
-		fi
-		if [ `echo ${ARG} | cut -c2-2` = "K" ]; then
-			echo $DEB_DEPS
-			exit 0
-		fi
-		if [ `echo ${ARG} | cut -c2-2` = "l" ]; then
-			LUT_PATH=`echo ${ARG} | cut -c3-${#ARG}`
-			if [ ! -f $LUT_PATH ]; then
-				echo "LUT not found!!!"
-				echo $LUT_PATH
-				exit 1
-			fi
-			LUT="lut3d=${LUT_PATH}"
-			isLUT=true
-			let ARGNUM--
-		fi
-		if [ `echo ${ARG} | cut -c2-2` = "b" ]; then
-			isBP=true
-			let ARGNUM--
-		fi
-		if [ `echo ${ARG} | cut -c2-2` = "k" ]; then
-			KEEP_DNGS=true
-			let ARGNUM--
-		fi
-		if [ `echo ${ARG} | cut -c2-2` = "B" ]; then
-			MLV_BP=`echo ${ARG} | cut -c3-${#ARG}`
-			let ARGNUM--
-		fi
-		if [ `echo ${ARG} | cut -c2-2` = "A" ]; then
-			WHITE_SPD=`echo ${ARG} | cut -c3-${#ARG}`
-			let ARGNUM--
-		fi
-		if [ `echo ${ARG} | cut -c2-2` = "Y" ]; then
-			echo $PIP_DEPS
-			exit 0
-		fi
-		if [ `echo ${ARG} | cut -c2-2` = "N" ]; then
-			echo $MAN_DEPS
-			exit 0
-		fi
-		continue
-	fi
+			c)
+				mode=${OPTARG}
+				case ${mode} in
+					"0") CHROMA_SMOOTH="--no-cs"
+					;;
+					"1") CHROMA_SMOOTH="--cs2x2"
+					;;
+					"2") CHROMA_SMOOTH="--cs3x3"
+					;;
+					"3") CHROMA_SMOOTH="--cs5x5"
+					;;
+				esac
+				;;
+			n)
+				NOISE_REDUC="-n ${OPTARG}"
+				;;
+			g)
+				mode=${OPTARG}
+				case ${mode} in
+					"0")
+						GAMMA="1 1"
+						#~ SPACE="0" #What's going on here?
+					;;
+					"1")
+						GAMMA="2.2 0"
+						#~ SPACE="2"
+					;;
+					"2")
+						GAMMA="1.8 0"
+						#~ SPACE="4"
+					;;
+					"3")
+						GAMMA="2.4 12.9"
+						#~ SPACE="1"
+					;;
+					"4")
+						GAMMA="2.222 4.5"
+						#~ SPACE="0"
+					;;
+				esac
+				;;
+			
+			
+			w)
+				mode=${OPTARG}
+				case ${mode} in
+					"0") CAMERA_WB=false; GEN_WHITE=true #Will generate white balance.
+					;;
+					"1") CAMERA_WB=true; GEN_WHITE=false;
+					;;
+					"2") WHITE="-r 1 1 1 1"; CAMERA_WB=false; GEN_WHITE=false
+					;;
+				esac
+				;;
+			l)
+				LUT_PATH=${OPTARG}
+				if [ ! -f $LUT_PATH ]; then
+					echo "LUT not found!!!"
+					echo $LUT_PATH
+					exit 1
+				fi
+				LUT="lut3d=${LUT_PATH}"
+				isLUT=true
+				;;
+			S)
+				tmpSat=${OPTARG}
+				SATPOINT="-S ${tmpSat}"
+				;;
+			
+			
+			u)
+				DUAL_ISO=true
+				;;
+			b)
+				isBP=true
+				;;
+			a)
+				BADPIXEL_PATH=${OPTARG}
+				;;
+			F)
+				DARKFRAME=${OPTARG}
+				;;
+			R)
+				echo "To Be Implemented"
+				;;
+			
+			
+			e)
+				SETTINGS_OUTPUT=true
+				;;
+			K)
+				echo $DEB_DEPS
+				;;
+			Y)
+				echo $PIP_DEPS
+				exit 0
+				;;
+			N)
+				echo $MAN_DEPS
+				exit 0
+				;;
+			
+			
+			*)
+				echo "Invalid option: -$OPTARG" >&2
+				;;
+		esac
+	done
 }
 
 checkDeps() {
+		argBase="$(basename "$ARG")"
+		argExt="${argBase##*.}"
+		argTrunc="${argBase%.*}"
+		
+		#Argument Checks
 		if [ ! -f $ARG ] && [ ! -d $ARG ]; then
 			echo -e "\e[0;31m\e[1mFile ${ARG} not found! Skipping file.\e[0m\n"
-			continue
+			let ARGNUM--; continue
+		fi
+		
+		if [[ ! -d $ARG && ! ( $argExt == "MLV" || $argExt == "mlv" || $argExt == "RAW" || $argExt == "raw" ) ]]; then
+			echo -e "\e[0;31m\e[1mFile ${ARG} has invalid extension!\e[0m\n"
+			let ARGNUM--; continue
+		fi
+		
+		if [[ ( ( ! -f $ARG ) && $(ls -1 ${ARG%/}/*.[Dd][Nn][Gg] 2>/dev/null | wc -l) == 0 ) && ( `folderName ${ARG}` != $argTrunc ) ]]; then
+			echo -e "\e[0;31m\e[1mFolder ${ARG} contains no DNG files!\e[0m\n"
+			let ARGNUM--; continue
 		fi
 		
 		if [ ! -d $ARG ] && [ $(echo $(wc -c ${ARG} | cut -d " " -f1) / 1000 | bc) -lt 1000 ]; then #Check that the file is not too small.
 			cont=false
 			while true; do
-				read -p "${ARG} is unusually small at $(wc -c ${ARG})KB. Continue, skip, or remove? [c/s/r] " csr
-				case $ysr in
+				read -p "${ARG} is unusually small at $(echo "$(echo "$(wc -c ${ARG})" | cut -d$' ' -f1) / 1000" | bc)KB. Continue, skip, or remove? [c/s/r] " csr
+				case $csr in
 					[Cc]* ) "\n\e[0;31m\e[1mContinuing.\e[0m\n"; break
 					;;
 					[Ss]* ) echo -e "\n\e[0;31m\e[1mSkipping.\e[0m\n"; cont=true; break
@@ -567,7 +642,7 @@ checkDeps() {
 			done
 			
 			if [ $cont == true ]; then
-				continue
+				let ARGNUM--; continue
 			fi
 		fi
 		
@@ -587,6 +662,8 @@ checkDeps() {
 			isExit=true
 		fi
 		
+		
+		#Features
 		if [ ! -f $PYTHON_BAL ]; then
 			echo -e "\e[0;31m\e[1m${PYTHON_BAL} not found! Execution will continue without AWB.\e[0m\n\tDownload from convmlv repository.\n"
 		fi
@@ -603,6 +680,7 @@ checkDeps() {
 			echo -e "\e[0;31m\e[1m${CR_HDR} not found! Execution will continue without Dual ISO processing capability.\e[0m\n\tGet it here: http://www.magiclantern.fm/forum/index.php?topic=7139.0\n"
 		fi
 		
+		
 		if [[ $isExit == true ]]; then
 			echo -e "\e[0;33m\e[1mPlace all downloaded files in the Current Directory, or specify paths with relevant arguments (see 'convmlv -h')!\e[0m\n"
 			exit 1
@@ -611,6 +689,11 @@ checkDeps() {
 
 bold() {
 	echo -e "\e[1m${1}\e[0m"
+}
+
+folderName() {
+	#Like basename, but for folders.
+	echo "$1" | rev | cut -d$'/' -f1 | rev
 }
 
 prntSet() {
@@ -648,17 +731,39 @@ mlvSet() {
 	KELVIN=`echo "$camDump" | grep 'Kelvin' | sed 's/[[:alpha:] ]*:   //' | cut -d$'\n' -f1`
 }
 
+rawSet() { #Set as many options as the RAW spec will allow. Grey out the rest.
+	#~ camDump=$(${MLV_DUMP} -v -m ${ARG}) #Read it in *once*; otherwise it's unbearably slow on external media.
+	
+	#~ FPS=`echo "$camDump" | grep FPS | awk 'FNR == 1 {print $3}'`
+			
+	#~ CAM_NAME=`echo "$camDump" | grep 'Camera Name' | cut -d "'" -f 2`
+	#~ FRAMES=`echo "$camDump" | awk '/Processed/ { print $2; }'` #Use actual processed frames as opposed to what the sometimes incorrect metadata thinks.
+	#~ ISO=`echo "$camDump" | grep 'ISO' | sed 's/[[:alpha:] ]*:        //' | cut -d$'\n' -f2`
+	#~ APERTURE=`echo "$camDump" | grep 'Aperture' | sed 's/[[:alpha:] ]*:    //' | cut -d$'\n' -f1`
+	#~ LEN_FOCAL=`echo "$camDump" | grep 'Focal Len' | sed 's/[[:alpha:] ]*:   //' | cut -d$'\n' -f1`
+	#~ SHUTTER=`echo "$camDump" | grep 'Shutter' | sed 's/[[:alpha:] ]*:   //' | grep -oP '\(\K[^)]+' |  cut -d$'\n' -f1`
+	#~ REC_DATE=`echo "$camDump" | grep 'Date' | sed 's/[[:alpha:] ]*:        //' | cut -d$'\n' -f1`
+	#~ REC_TIME=`echo "$camDump" | grep 'Time:        [0-2][0-9]\:*' | sed 's/[[:alpha:] ]*:        //' | cut -d$'\n' -f1`
+	#~ KELVIN=`echo "$camDump" | grep 'Kelvin' | sed 's/[[:alpha:] ]*:   //' | cut -d$'\n' -f1`
+	echo ''
+}
+
 if [ $# == 0 ]; then
-	help
-	echo -e "\e[0;31m\e[1mNo arguments, no joy!!!\e[0m\n"
+	echo -e "\e[0;31m\e[1mNo arguments given.\e[0m\n\tType 'convmlv -h/--help' to see help page, or 'convmlv -v/--version' for current version string."
 fi
 
+parseArgs "$@" #Parse all arguments.
+shift $((OPTIND-1))
+
 ARGNUM=$#
-for ARG in $*; do
+
+for ARG in $@; do #All remaining mass-arguments
+	ARG="$(pwd)/${ARG}"
+	if [[ $OSTYPE == "linux-gnu" ]]; then
+		ARG="$(readlink -f $ARG)"  >/dev/null 2>/dev/null #Relative ARG only fixed on Linux, as readlink only exists in UNIX. Mac variant?
+	fi
 #Evaluate convmlv.conf configuration file. Very limited for now.
 	evalConf
-#Evaluate command line arguments. ARGNUM decrements to keep track of how many files there are to process.
-	parseArgs # <-- Has a continue statement inside of it if we haven't reached the output.
 #Check that things exist.
 	checkDeps
 	
@@ -704,6 +809,10 @@ for ARG in $*; do
 #PREPARATION
 
 #Establish Basic Directory Structure.
+	if [[ $OSTYPE == "linux-gnu" ]]; then
+		OUTDIR="$(readlink -f $OUTDIR)"  >/dev/null 2>/dev/null #Relative Badpixel OUTDIR only fixed on Linux, as readlink only exists in UNIX. Mac variant?
+	fi
+	
 	if [ $OUTDIR != $PWD ] && [ isOutGen == false ]; then
 		mkdir -p $OUTDIR #NO RISKS. WE REMEMBER THE LUT.py. RIP.
 		isOutGen=true
@@ -712,10 +821,20 @@ for ARG in $*; do
 	FILE="${OUTDIR}/${TRUNC_ARG}"
 	TMP="${FILE}/tmp_${TRUNC_ARG}"
 	
-#Manage if it's a DNG argument. Also, create FILE and TMP.
+#Manage if it's a DNG argument, reused or not. Also, create FILE and TMP.
 	DEVELOP=true
-	if [ -d $ARG ] && [ `basename ${ARG} | cut -c1-3` == "dng" ] && [ -f "${ARG}/../settings.txt" ]; then #If we're reusing a dng sequence, copy over before we delete the original.
+	if [[ ( -d $ARG ) && ( ( `basename ${ARG} | cut -c1-3` == "dng" && -f "${ARG}/../settings.txt" ) || ( `basename ${ARG}` == $TRUNC_ARG && -f "${ARG}/settings.txt" ) ) ]]; then #If we're reusing a dng sequence, copy over before we delete the original.
 		echo -e "\e[1m${TRUNC_ARG}:\e[0m Moving DNGs from previous run...\n" #Use prespecified DNG sequence.
+		
+		#User may specify either the dng_ or the trunc_arg folder; must account for both.
+		if [[ `folderName ${ARG}` == $TRUNC_ARG && -d "${ARG}/dng_${TRUNC_ARG}" ]]; then
+			ARG="${ARG}/dng_${TRUNC_ARG}" #Set arg to the dng argument.
+		elif [[ `folderName ${ARG}` == $TRUNC_ARG ]]; then
+			echo -e "\e[0;31m\e[1mCannot reuse - DNG folder does not exist! Skipping argument.\e[0m"
+			continue
+		else
+			TRUNC_ARG=`echo $TRUNC_ARG | cut -c5-${#TRUNC_ARG}`
+		fi
 		
 		DNG_LOC=${OUTDIR}/tmp_reused
 		mkdir -p ${OUTDIR}/tmp_reused
@@ -726,11 +845,10 @@ for ARG in $*; do
 		FRAMES=`cat ${ARG}/../settings.txt | grep "Frames" | cut -d $" " -f2` #Grab FRAMES from previous run.
 		cp "${ARG}/../settings.txt" $DNG_LOC
 		
-		TRUNC_ARG=`echo $TRUNC_ARG | cut -c5-${#TRUNC_ARG}`
 		oldARG=$ARG
 		ARG=$(dirname $ARG)/${TRUNC_ARG}
 		BASE="$(basename "$ARG")"
-		EXT="${BASE##*.}"		
+		EXT="${BASE##*.}"
 		
 		dngLocClean() {
 			find $DNG_LOC -iname "*.dng" | xargs -I {} mv {} $oldARG
@@ -813,7 +931,7 @@ for ARG in $*; do
 			rawStat="\c"
 		fi
 		
-		#IF extension is RAW, convert to MLV. All the newer features are MLV-only, because of mlv_dump's amazingness.
+		#IF extension is RAW, we want to convert to MLV. All the newer features are MLV-only, because of mlv_dump's amazingness.
 		
 		if [ $EXT == "MLV" ] || [ $EXT == "mlv" ]; then
 			# Read the header for interesting settings :) .
@@ -843,13 +961,20 @@ for ARG in $*; do
 			#Looks like this: 0-1 2-2 3-4 5-5 6-7 8-8 9-10. Put that in an array.
 
 			devDNG() { #Takes n arguments: 1{}, the frame range 2$MLV_DUMP 3$REAL_MLV 4$DARK_PROC 5$tmpOut 6$smooth 7$TMP 8$FRAME_END 9$TRUNC_ARG
-				tmpOut=${7}/${1} #Each output will number from 0, so give each its own folder.
+				range=$1
+				firstFrame=false
+				if [[ $range == "0-0" ]]; then #mlv_dump can't handle 0-0, so we develop 0-1.
+					range="0-1"
+					firstFrame=true
+				fi
+				
+				tmpOut=${7}/${range} #Each output will number from 0, so give each its own folder.
 				mkdir -p $tmpOut
 				
-				start=$(echo "$1" | cut -d'-' -f1)
-				end=$(echo "$1" | cut -d'-' -f2) #Get start and end frames from the frame range
+				start=$(echo "$range" | cut -d'-' -f1)
+				end=$(echo "$range" | cut -d'-' -f2) #Get start and end frames from the frame range
 				
-				$2 $3 $4 -o "${tmpOut}/${9}_" -f ${1} $6 --dng --batch | { #mlv_dump command. Uses frame range.
+				$2 $3 $4 -o "${tmpOut}/${9}_" -f ${range} $6 --dng --batch | { #mlv_dump command. Uses frame range.
 					lastCur=0
 					while IFS= read -r line; do
 						output=$(echo $line | grep -Po 'V.*A' | cut -d':' -f2 | cut -d$' ' -f1) #Hacked my way to the important bit.
@@ -863,6 +988,11 @@ for ARG in $*; do
 					done
 					
 				} #Progress Bar
+				
+				if [[ $firstFrame == true ]]; then #If 0-0.
+					rm $(printf "${tmpOut}/${9}_%06d.dng" 1) #Remove frame #1, leaving us only with frame #0.
+					mv $tmpOut "${7}/0-0" #Move back to 0-0, as if that's how it was developed all along.
+				fi
 			}
 
 			export -f devDNG #Export to run in subshell.
@@ -871,9 +1001,9 @@ for ARG in $*; do
 				xargs -I {} -P $THREADS -n 1 \
 					bash -c "devDNG '{}' '$MLV_DUMP' '$REAL_MLV' '$DARK_PROC' '$tmpOut' '$smooth' '$TMP' '$FRAME_END' '$TRUNC_ARG'"
 			#Since devDNG must run in a subshell, globals don't follow. Must pass *everything* in.
-					
 			echo -e "\e[2K\rMLV to DNG: Frame ${FRAME_END}/${FRAME_END}\c" #Ensure it looks right at the end.
 			echo -e "\n"
+			#~ exit
 
 			count=$FRAME_START
 			for range in "${fileRanges[@]}"; do #Go through the subfolders sequentially
@@ -885,6 +1015,7 @@ for ARG in $*; do
 				done
 				rm -r $tmpOut #Remove the now empty subfolder
 			done
+			#~ exit
 			
 		elif [ $EXT == "RAW" ] || [ $EXT == "raw" ]; then
 			echo -e $rawStat
@@ -904,6 +1035,8 @@ for ARG in $*; do
 		
 		bad_name="badpixels_${TRUNC_ARG}.txt"
 		gen_bad="${TMP}/${bad_name}"
+		touch $bad_name
+		#~ exit
 		
 		if [ $EXT == "MLV" ] || [ $EXT == "mlv" ]; then
 			$MLV_BP -o $gen_bad $ARG
@@ -931,7 +1064,6 @@ for ARG in $*; do
 		gen_bad="${TMP}/${bad_name}"
 		cp $BADPIXEL_PATH "${gen_bad}"
 		BADPIXELS="-P ${gen_bad}"
-		#~ echo $gen_bad
 	fi
 
 #Dual ISO Conversion
@@ -1000,10 +1132,11 @@ for ARG in $*; do
 		echo -e "\e[1m${TRUNC_ARG}:\e[0m Generating WB...\n"
 		
 		#Calculate n, the distance between samples.
-		if [ $WHITE_SPD -gt $FRAMES ]; then
-			WHITE_SPD=$FRAMES
+		frameLen=$(echo "$FRAME_END - $FRAME_START" | bc)
+		if [ $WHITE_SPD -gt $frameLen ]; then
+			WHITE_SPD=$frameLen
 		fi
-		n=`echo "${FRAMES} / ${WHITE_SPD}" | bc`
+		n=`echo "${frameLen} / ${WHITE_SPD}" | bc`
 		
 		toBal="${TMP}/toBal"
 		mkdirS $toBal
@@ -1019,7 +1152,7 @@ for ARG in $*; do
 				mv "$TMP/${name%.*}.tiff" $toBal #TIFF MOVEMENT. We use TIFFs here because it's easy for dcraw and Python.
 				let t++
 			fi
-			echo -e "\e[2K\rWB Development: Sample ${t}/$(echo "${FRAMES} / $n" | bc) (Frame: $(echo "${i} + 1" | bc)/${FRAMES})\c"
+			echo -e "\e[2K\rWB Development: Sample ${t}/$(echo "${frameLen} / $n" | bc) (Frame: $(echo "${i} + 1" | bc)/${FRAME_END})\c"
 			let i++
 		done
 		echo ""
@@ -1222,10 +1355,9 @@ for ARG in $*; do
 		fi
 	fi
 	
-	echo -e "\n\e[1mCleaning Up.\e[0m\n"
-	
 #Potentially move DNGs.
 	if [ $KEEP_DNGS == true ]; then
+		echo -e "\e[1mMoving DNGs...\e[0m"
 		DNG="${FILE}/dng_${TRUNC_ARG}"
 		mkdirS $DNG
 		
@@ -1236,6 +1368,8 @@ for ARG in $*; do
 			find $TMP -name "*.dng" | xargs -I '{}' mv {} $DNG
 		fi
 	fi
+	
+	echo -e "\n\e[1mCleaning Up.\e[0m\n\n"
 	
 #Delete tmp
 	rm -rf $TMP

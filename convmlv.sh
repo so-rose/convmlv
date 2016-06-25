@@ -3,6 +3,7 @@
 #TODO:
 #~ Stats for .RAW files.
 #~ Integrate anti-vertical banding. May require being able to use multiple darkframe files.
+#~ Atadenoise integration.
 
 #~ Better Preview:
 #~ --> A different module (like -e) for live viewing of footage, under convmlv settings. Danne is working on this :).
@@ -130,7 +131,7 @@ setDefaults() { #Set all the default variables. Run here, and also after each AR
 	isLUT=false
 }
 
-setDefaults
+setDefaults #Run now, but also later.
 
 help() {
 less -R << EOF
@@ -292,7 +293,7 @@ CONFIG FILE:
 	
 	File-Specific Block: A LOCAL config file lets you specify options for specific input names:
 		/ <TRUNCATED INPUTNAME>
-		...specify options
+			...specify options
 		*
 		
 	$(echo -e "\e[1mFile-Specific Blocks override all other options.\e[0m") This allows one to create
@@ -952,14 +953,15 @@ fi
 
 #MANUAL SANDBOXING + OPTION SOURCES - Making sure global, local, command line options all override each other correctly.
 evalConf "$GCONFIG" false #Parse global config file.
-parseArgs "$@" #First, parse it all to set LCONFIG.
+
+parseArgs "$@" #First, parse all cli args. We only need the -C flag, but that forces us to just parse everything.
 shift $((OPTIND-1)) #Shift past all of the options to the file arguments.
 OPTIND=1 #To reset argument parsing, we must set OPTIND to 1.
 
 evalConf "$LCONFIG" false #Parse local config file.
-set -- $INPUT_ARGS #Reset the argument input for reparsing.
+set -- $INPUT_ARGS #Reset $@ for cli option reparsing.
 
-parseArgs "$@" #Parse it all again to override config file options.
+parseArgs "$@" #Reparse cli to overwrite local config options.
 shift $((OPTIND-1))
 OPTIND=1
 
@@ -967,9 +969,9 @@ OPTIND=1
 
 ARGNUM=$#
 FILE_ARGS="$@"
-IFS=' ' read -r -a FILE_ARGS_ITER <<< $FILE_ARGS #Need to make it an array for iteration purposes.
+IFS=' ' read -r -a FILE_ARGS_ITER <<< $FILE_ARGS #Need to make it an array, for iteration over paths purposes.
 
-for ARG in "${FILE_ARGS_ITER[@]}"; do #Go through FILE_ARGS, copied from parsed $@ because $@ is going to be changing on 'set --'
+for ARG in "${FILE_ARGS_ITER[@]}"; do #Go through FILE_ARGS_ITER array, copied from parsed $@ because $@ is going to be changing on 'set --'
 	ARG="$(pwd)/${ARG}"
 	
 	if [[ $OSTYPE == "linux-gnu" ]]; then
@@ -1201,7 +1203,7 @@ for ARG in "${FILE_ARGS_ITER[@]}"; do #Go through FILE_ARGS, copied from parsed 
 			fileRanges=(`echo $($SRANGE $REAL_FRAMES $THREADS)`) #Get an array of frame ranges from the amount of frames and threads. I used a python script for this.
 			#Looks like this: 0-1 2-2 3-4 5-5 6-7 8-8 9-10. Put that in an array.
 
-			devDNG() { #Takes n arguments: 1{}, the frame range 2$MLV_DUMP 3$REAL_MLV 4$DARK_PROC 5$tmpOut 6$smooth 7$TMP 8$FRAME_END 9$TRUNC_ARG
+			devDNG() { #Takes n arguments: 1{}, the frame range 2$MLV_DUMP 3$REAL_MLV 4$DARK_PROC 5$tmpOut 6$smooth 7$TMP 8$FRAME_END 9$TRUNC_ARG 10$FRAME_START
 				range=$1
 				firstFrame=false
 				if [[ $range == "0-0" ]]; then #mlv_dump can't handle 0-0, so we develop 0-1.
@@ -1225,7 +1227,7 @@ for ARG in "${FILE_ARGS_ITER[@]}"; do #Go through FILE_ARGS, copied from parsed 
 						if [[ $cur == $lastCur ]] || [[ $cur -gt $end ]] || [[ $cur -lt $start ]]; then continue; fi #Turns out, it goes through all the frames, even if cutting the frame range. So, clamp it!
 						
 						lastCur=$cur #It likes to repeat itself.
-						echo -e "\e[2K\rMLV to DNG: Frame ${cur}/${8}\c" #Print out beautiful progress bar, in parallel!
+						echo -e "\e[2K\rMLV to DNG: Frame $(echo "${cur} + ${10}" | bc)/${8}\c" #Print out beautiful progress bar, in parallel!
 					done
 					
 				} #Progress Bar
@@ -1240,7 +1242,7 @@ for ARG in "${FILE_ARGS_ITER[@]}"; do #Go through FILE_ARGS, copied from parsed 
 			
 			for range in "${fileRanges[@]}"; do echo $range; done | #For each frame range, assign a thread.
 				xargs -I {} -P $THREADS -n 1 \
-					bash -c "devDNG '{}' '$MLV_DUMP' '$REAL_MLV' '$DARK_PROC' '$tmpOut' '$smooth' '$TMP' '$FRAME_END' '$TRUNC_ARG'"
+					bash -c "devDNG '{}' '$MLV_DUMP' '$REAL_MLV' '$DARK_PROC' '$tmpOut' '$smooth' '$TMP' '$FRAME_END' '$TRUNC_ARG' '$FRAME_START'"
 			
 			#Since devDNG must run in a subshell, globals don't follow. Must pass *everything* in.
 			echo -e "\e[2K\rMLV to DNG: Frame ${FRAME_END}/${FRAME_END}\c" #Ensure it looks right at the end.
@@ -1442,7 +1444,7 @@ for ARG in "${FILE_ARGS_ITER[@]}"; do #Go through FILE_ARGS, copied from parsed 
 #DEFINE PROCESSING FUNCTIONS
 		
 	dcrawOpt() { #Find, develop, and splay raw DNG data as ppm, ready to be processed.
-		find "${TMP}" -maxdepth 1 -iname "*.dng" -print0 | sort -z | cut -d '' -f $FRAME_RANGE | tr -d "\n" | xargs -0 \
+		find "${TMP}" -maxdepth 1 -iname "*.dng" -print0 | sort -z | tr -d "\n" | xargs -0 \
 			dcraw -c -q $DEMO_MODE $FOUR_COLOR -k $BLACK_LEVEL $SATPOINT $BADPIXELS $WHITE -H $HIGHLIGHT_MODE -g $GAMMA $NOISE_REDUC -o $SPACE $DEPTH
 	} #Is prepared to pipe all the files in TMP outwards.
 	
@@ -1579,6 +1581,7 @@ for ARG in "${FILE_ARGS_ITER[@]}"; do #Go through FILE_ARGS, copied from parsed 
 		else
 			echo -e "\e[1m${TRUNC_ARG}:\e[0m Encoding to ProRes..."
 			dcrawOpt | mov_main
+			exit
 		fi
 	elif [ $MOVIE == true ] && [ $IMAGES == true ]; then #Use images if available, as opposed to developing the files again.
 		if [ $isH264 == true ]; then

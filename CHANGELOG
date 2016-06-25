@@ -1,0 +1,65 @@
+[code]
+[b]v1.9.0[/b]: [url=https://bitbucket.org/so-rose/convmlv/src]https://bitbucket.org/so-rose/convmlv/src[/url]
+[size=8pt]*Sane Argument Parsing! You can now choose to use spaces![/size]
+[size=8pt]*DNG: Multithreaded mlv_dump with progress bar![/size]
+[size=8pt]*Config File: Can now use a global config file in $HOME/convmlv.conf with select options. More to come later![/size]
+[size=8pt]*Misc: Auto threads on Linux, use s and e in frame range, better help, more error checking/bug fixes.[/size]
+
+[b]v1.8.1[/b]: [url=https://bitbucket.org/so-rose/convmlv/src]https://bitbucket.org/so-rose/convmlv/src[/url]
+[size=8pt]*Specify Frame Range to develop! Note that this will still develop all DNGs; however, if you specify the dng_ folder of a previous run as the argument, it'll reuse those DNGs without redevelopment. This works for Dual ISO as well.[/size]
+[size=8pt]* Camera WB is now default.[/size]
+
+[b]v1.8.0[/b]:MASSIVE BUG FIX. [url=https://bitbucket.org/so-rose/convmlv/src]https://bitbucket.org/so-rose/convmlv/src[/url]
+[size=8pt]*Dark Level Aware!!! This is a bug fix so big that [color=red]all previous versions are basically unusable [/color] (you'd sometimes find a magenta or green cast; fixable but very, very bad).[/size]
+[size=8pt]*Color Space Output! Gone is the "gamma curve" of old; gamma and output color spaces are now synchronized.[/size]
+[size=8pt]*Chroma Smoothing! Uses 2x2, 3x3, or 5x5; works perfectly with Dual ISO as well.[/size]
+[size=8pt]*More features: Use badpixels file without generating one, print out footage attributes (simple stuff for now, and only works on MLV for now).
+
+[b]v1.7.1[/b]:[url=https://bitbucket.org/so-rose/convmlv/src]https://bitbucket.org/so-rose/convmlv/src[/url]
+[size=8pt]*Use any DNG sequence as input now; just specify the folder.[/size]
+[size=8pt]*Darkframe Subtraction! Simply specify the darkly recorded MLV with -F; it'll automatically be averaged and used.[/size]
+
+[b]v1.7.0[/b]:[url=https://bitbucket.org/so-rose/convmlv]https://bitbucket.org/so-rose/convmlv[/url]
+[size=8pt]*Multithreading! Image sequences and Dual ISO processing are multithreaded - from 4x to 8x speedup in my 4-core (8 thread) testing![/size]
+[size=8pt]*Dual ISO! Specify -u to process the file with cr2hdr, which is now a dependency. ***Badpixel removal might be a little strange, but it shouldn't affect you otherwise.[/size]
+[size=8pt]*Format Support! Use -f to choose TIFF, EXR, DPX, or PNG (feel free to request more). This includes automatic compression for all of them with -c.[/size]
+
+[b]v1.6.1[/b]:EXRs and Bug Fixes.
+[size=8pt]*EXR output support (now default)! This includes PIZ compression. Unfortunately LUTs cannot be applied (ffmpeg doesn't support exr output).[/size]
+
+[b]v1.6.0[/b]:Piping and compression.
+[size=8pt]*Speedup! Proxies are now created simultaneous to the image/movie. In the future, images and movies will be made simultaneously as well.[/size]
+[size=8pt]*Lossless TIFF compression! I chose ZIP, due to its superior effect on 16-bit files (78% of the original size in one test).[/size]
+[size=8pt]*-A now denotes the amount of images used to average the WB, regardless of the length of the sequence.[/size]
+
+[b]v1.5.2[/b]: Speedups, fixes, and can specify own .badpixels file!
+[size=8pt]*-H2 looks good, but blew highlights in some files :( -H0 is now default again![/size]
+[size=8pt]*Four color interpolation (-f) is now available, for fixing weirdness in AHD and VNG modes.[/size]
+[size=8pt]*You can now specify your own .badpixels file, along with the generated one (they're pasted together), for bad pixels that aren't focus pixels. Use -a<path>.[/size]
+[size=8pt]*LUT application to images has been sped up & streamlined immensely![/size]
+[size=8pt]*It will no longer ask to overwrite the output directory, only the individual file directory.[/size]
+
+[b]v1.5.1[/b]: FPS patch.
+[size=8pt]*FPS is now read from the MLV or RAW file. -f option has thus been removed.[/size]
+
+[b]v1.5.0[/b]: UI and Speed, plus cleanup (and probably new bugs :) ).
+[size=8pt]*AWB speedup - it's now fast, and can be made faster by raising the number in the  new -A[int] option.[/size]
+[size=8pt]*Redid UI - You can choose to make any combination of image sequence, movie, and proxies for each. Other options changed names, and the help page was reorganized.[/size]
+[size=8pt]*Faster Movie Creation - There's no longer any need to create TIFFs, then JPGs, before getting to the MOV/H.264, which translates to having a video file faster.[/size]
+
+[b]v1.4.0[/b]: AWB and .RAW!
+[size=8pt]*Auto White Balance returns! Requires new Python dependencies to invoke a companion script, balance.py. A little slow, but not unusably so.[/size]
+[size=8pt]*Process .RAW files. Next step is Dual ISO processing :) .[/size]
+[size=8pt]*Bug fixes + cleanups. Who knew things could go wrong...[/size]
+
+[b]v1.3.0[/b]: Pixels & Bug Fixes.
+[size=8pt]*Badpixels removal! Put dfort's script (get it [url=https://bitbucket.org/daniel_fort/ml-focus-pixels/src]here[/url]) in the same directory, or specify the path with -B.[/size]
+[size=8pt]*Cleaned up some pretty serious bugs, as well as organizing the output better. Should be neater than ever :) ![/size]
+
+[b]v1.2.0[/b]:Denoising!
+[size=8pt]*Wavelet denoising[/size]
+[size=8pt]*Undefaulted auto white balance, put warning - auto WB is WIP.[/size]
+
+[b]v1.1.0[/b]: Apply LUTs (.cube). A bit slow, but most certainly works!
+[b]v1.0.0[/b]: Initial Release.
+[/code]

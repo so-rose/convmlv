@@ -4,7 +4,7 @@ MLV/RAW/DNG to Image/Movie and Proxy
 =======
 See [http://www.magiclantern.fm/forum/index.php?topic=16799.0](http://www.magiclantern.fm/forum/index.php?topic=16799.0) for more info.
 
-**Use the pdf found in the source, under docs->docs.pdf.**
+**The pdf found in the source, under docs->docs.pdf, is very outdated. Use the help text below.**
 
 Help page is below:
 
@@ -19,7 +19,7 @@ INFO:
 	  -->Acceptable Inputs: MLV, RAW, DNG Folder.
 	  -->Option Input: From command line or config file.
 	
-VERSION: 1.9.0
+VERSION: 1.9.1
 	
 MANUAL DEPENDENCIES:
 	-mlv_dump: Required. http://www.magiclantern.fm/forum/index.php?topic=7122.0
@@ -33,7 +33,7 @@ OPTIONS, BASIC:
 	-v, --version		version - Print out version string.
 	-h, --help		help - Print out this help page.
 	
-	-C, --config		CONFIG - Designates config file to use.
+	-C, --config		config - Designates config file to use.
 	
 	-o, --outdir <path>	OUTDIR - The path in which files will be placed.
 	-P, --res-path <path>	RES_PATH - The path in which all manual dependencies are looked for.
@@ -41,9 +41,9 @@ OPTIONS, BASIC:
 	--mlv-dump <path>	MLV_DUMP - The path to mlv_dump.
 	--raw-dump <path>	RAW_DUMP - The path to raw2dng.
 	--badpixels <path>	MLV_BP - The path to mlv2badpixels.sh (by dfort).
-	--cr-hdr <path>		CR_HDR
-	--srange <path>	 	SRANGE
-	--balance <path>	BAL
+	--cr-hdr <path>		CR_HDR - The path to cr2hdr.
+	--srange <path>	 	SRANGE - The path to sRange.py.
+	--balance <path>	BAL - The path to balance.py.
 	--python <path>		PYTHON - The path or command used to invoke Python.
 	
 	-T, --threads [int]	THREADS - Override amount of utilized process threads
@@ -114,7 +114,7 @@ OPTIONS, COLOR:
 	
 	--white-speed [int]	WHITE_SPD - Samples used to calculate AWB
 	
-	--allow-white-clip	WHITE_SCALE - Let White Balance multipliers clip.
+	--allow-white-clip	WHITE_CLIP - Let White Balance multipliers clip.
 	
 	
 OPTIONS, FEATURES:
@@ -131,10 +131,11 @@ OPTIONS, FEATURES:
 	
 	-R <path>		dark_out - Specify to create a .darkframe file from passed in MLV.
 	 --> Outputs <arg>.darkframe file to <path>.
+	 --> THE .darkframe EXTENSION IS ADDED FOR YOU.
 	
 	
 OPTIONS, INFO:
-	-e			Output MLV settings.
+	-q			Output MLV settings.
 	
 	-K			Debian Package Deps - Output package dependecies.
 	  --> Install (Debian only): sudo apt-get install $ (./convmlv -K)
@@ -146,11 +147,36 @@ OPTIONS, INFO:
 	  --> There's no automatic way to install these. See http://www.magiclantern.fm/forum/index.php?topic=16799.0 .
 	
 CONFIG FILE:
-	Next to each option is an uppercased item, ex. OUTDIR. In a convmlv config file, you can specify this option
+	You do not need to type in all the arguments each time: Config files, another way to specify options, can save you time & lend
+	you convenience in production situations.
+	
+	GLOBAL: /home/sofus/convmlv.conf
+	LOCAL: Specify -C/--config.
+
+	Some options have an uppercased VARNAME, ex. OUTDIR. In a convmlv config file, you can specify this option
 	in the following format, line by line:
 		<VARNAME> <VALUE>
+		
+	If the value is a true/false flag, simply specifying VARNAME is enough. Otherwise, normal rules for the value applies.
 	
-	Some more notes regarding config files:
-		-The global config file, read every time, will be looked for in /home/sofus/convmlv.conf.
-		-Hashtags are considered comments, if and only if they are the first character in the line.
+	Options override each other as such:
+	-LOCAL overrides GLOBAL config.
+	-Passed arguments override both configs.
+	-Lines starting with # are comments.
+	-Name a config using the VARNAME: CONFIG_NAME <name>
+	
+	
+	File-Specific Block: A LOCAL config file lets you specify options for specific input names:
+		/ <TRUNCATED INPUTNAME>
+		...specify options
+		*
+		
+	File-Specific Blocks override all other options. This allows one to create
+	a single config file to batch-develop several input files/folders at once, after deciding how each one should
+	look/be configured individually.
+	
+	Notes on Usage:
+	-You must use the truncated (no .mlv or .raw) input name after the /.
+	-No nested blocks.
+	-Indentation by tabs or spaces is allowed, but not enforced.
 ```

@@ -1,0 +1,63 @@
+CONFIG_NAME template
+
+# Comments start with #. See 'convmlv -h' for option documentation.
+
+### <------------------ BASIC OPTIONS ------------------>
+OUTDIR ./raw_conv
+#RES_PATH /home/sofus/subhome/src/convmlv
+
+MLV_DUMP /home/sofus/subhome/src/convmlv/mlv_dump
+RAW_DUMP /home/sofus/subhome/src/convmlv/raw2dng
+MLV_BP /home/sofus/subhome/src/convmlv/mlv2badpixels.sh
+CR_HDR /home/sofus/subhome/src/convmlv/cr2hdr
+SRANGE /home/sofus/subhome/src/convmlv/sRange.py
+BAL /home/sofus/subhome/src/convmlv/balance.py
+PYTHON python3
+
+THREADS 7
+
+### <------------------ OUTPUT OPTIONS ------------------>
+IMAGE
+IMG_FMT 0
+
+#MOVIE
+
+PROXY 0
+PROXY_SCALE 50%
+
+KEEP_DNGS
+
+FRAME_RANGE s-e
+#UNCOMP
+
+### <------------------ RAW OPTIONS ------------------>
+
+DEMO_MODE 3
+#FOUR_COLOR
+
+HIGHLIGHT_MODE 0
+
+CHROMA_SMOOTH 1
+NOISE_REDUC 50
+
+SPACE 0
+#SHALLOW
+
+### <------------------ COLOR OPTIONS ------------------>
+
+WHITE 0
+
+#LUT lut.cube
+
+#SATPOINT 15000
+
+#WHITE_SPD 20
+#WHITE_CLIP
+
+### <------------------ FEATURE OPTIONS ------------------>
+#DUAL_ISO
+
+BADPIXELS
+#BADPIXEL_PATH ./7D_badpixels.txt
+
+#DARKFRAME ./df.darkframe

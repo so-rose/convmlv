@@ -1,20 +1,13 @@
 #!/bin/bash
 
 #TODO:
-#~ Stats for .RAW files and naked DNG sequences, best as possible.
-#~ --> Only read the file once into a long string, as opposed to once per setting.
-
-#~ Better reading from Config File (update confEval).
-
-#~ .darkframe generation.
+#~ Stats for .RAW files.
+#~ Integrate anti-vertical banding. May require being able to use multiple darkframe files.
 
 #~ Better Preview:
-#~ --> Essentially, a different module (like -e) for seeing, not developing, footage.
-#~ --> To start, an option allowing one to see a single frame, developed. -DONE
-
+#~ --> A different module (like -e) for live viewing of footage, under convmlv settings. Danne is working on this :).
 
 #BUG: Relative OUTDIR makes baxpixel generation fail if ./mlv2badpixels.sh doesn't exist. Fixed on Linux only.
-#MAYBE FIXED BUG: Run on all Charleston files; determine what's making Black Level not appear sometimes.
 
 
 #~ The MIT License (MIT)
@@ -40,27 +33,15 @@
 #~ SOFTWARE.
 
 #BASIC VARS
-VERSION="1.9.0" #Version string.
+VERSION="1.9.1" #Version string.
+INPUT_ARGS=$(echo "$@") #The original input argument string.
+
 if [[ $OSTYPE == "linux-gnu" ]]; then
 	THREADS=$(cat /proc/cpuinfo | awk '/^processor/{print $3}' | tail -1)
 else
 	THREADS=4
 fi
 #sysctl -n hw.ncpu for Mac?
-
-#DEPENDENCIES
-DEB_DEPS="imagemagick dcraw ffmpeg python3 python3-pip exiftool" #Dependency package names (Debian). List with -K option.
-PIP_DEPS="numpy Pillow tifffile" #Technically, you don't need Pillow. I'm not really sure :).
-MAN_DEPS="mlv_dump raw2dng cr2hdr mlv2badpixels.sh balance.py sRange.py"
-if [[ $OSTYPE == "linux-gnu" ]]; then
-	PYTHON="python3"
-else
-	PYTHON="python"
-fi
-
-
-#PATHS
-RES_PATH="." #Current Directory by default.
 
 setPaths() { #Repends on RES_PATH and PYTHON. Run this function if either is changed.
 	MLV_DUMP="${RES_PATH}/mlv_dump" #Path to mlv_dump location.
@@ -72,61 +53,84 @@ setPaths() { #Repends on RES_PATH and PYTHON. Run this function if either is cha
 	BAL="${PYTHON} ${PYTHON_BAL}"
 	SRANGE="${PYTHON} ${PYTHON_SRANGE}"
 }
-setPaths #Set all the paths using the current RES_PATH.
 
-OUTDIR="./raw_conv"
-isOutGen=false
+setDefaults() { #Set all the default variables. Run here, and also after each ARG run.
+#DEPENDENCIES
+	DEB_DEPS="imagemagick dcraw ffmpeg python3 python3-pip exiftool" #Dependency package names (Debian). List with -K option.
+	PIP_DEPS="numpy Pillow tifffile" #Technically, you don't need Pillow. I'm not really sure :).
+	MAN_DEPS="mlv_dump raw2dng cr2hdr mlv2badpixels.sh balance.py sRange.py"
+	if [[ $OSTYPE == "linux-gnu" ]]; then
+		PYTHON="python3"
+	else
+		PYTHON="python"
+	fi
+
+
+#PATHS
+	RES_PATH="." #Current Directory by default.
+	GCONFIG="${HOME}/convmlv.conf"
+	LCONFIG="" #No local config by default.
+
+	setPaths #Set all the paths using the current RES_PATH.
+
+	OUTDIR="./raw_conv"
+	isOutGen=false
 
 #OUTPUT
-MOVIE=false
-FPS=24 #Will be read from .MLV or .RAW.
-IMAGES=false
-IMG_FMT="exr"
-COMPRESS=""
-isCOMPRESS=true
-isJPG=false
-isH264=false
-KEEP_DNGS=false
+	MOVIE=false
+	FPS=24 #Will be read from .MLV or .RAW.
+	IMAGES=false
+	IMG_FMT="exr"
+	COMPRESS=""
+	isCOMPRESS=true
+	isJPG=false
+	isH264=false
+	KEEP_DNGS=false
 
 #FRAME RANGE
-FRAME_RANGE="" #UPDATED LATER WHEN FRAME # IS AVAILABLE.
-FRAME_START="1"
-FRAME_END=""
-RANGE_BASE=""
-isFR=true
+	FRAME_RANGE="" #UPDATED LATER WHEN FRAME # IS AVAILABLE.
+	FRAME_START="1"
+	FRAME_END=""
+	RANGE_BASE=""
+	isFR=true
 
 #RAW DEVELOPOMENT
-HIGHLIGHT_MODE="0"
-PROXY_SCALE="50%"
-DEMO_MODE="1"
-GAMMA="1 1"
-SPACE="0" #Color Space. Correlates to Gamma.
-DEPTH="-W -6"
-DEPTH_OUT="-depth 16"
-NOISE_REDUC=""
-FOUR_COLOR=""
-CHROMA_SMOOTH="--no-cs"
+	HIGHLIGHT_MODE="0"
+	PROXY_SCALE="50%"
+	DEMO_MODE="1"
+	GAMMA="1 1"
+	SPACE="0" #Color Space. Correlates to Gamma.
+	DEPTH="-W -6"
+	DEPTH_OUT="-depth 16"
+	NOISE_REDUC=""
+	FOUR_COLOR=""
+	CHROMA_SMOOTH="--no-cs"
 
 #FEATURES
-DUAL_ISO=false
-BADPIXELS=""
-BADPIXEL_PATH=""
-isBP=false
-DARKFRAME=""
-SETTINGS_OUTPUT=false
-BLACK_LEVEL=""
+	DUAL_ISO=false
+	BADPIXELS=""
+	BADPIXEL_PATH=""
+	isBP=false
+	DARKFRAME=""
+	SETTINGS_OUTPUT=false
+	MK_DARK=false
+	DARK_OUT=""
+	BLACK_LEVEL=""
 
 #White Balance
-WHITE=""
-GEN_WHITE=false
-CAMERA_WB=true
-WHITE_SPD=15
-isScale=false
-SATPOINT=""
+	WHITE=""
+	GEN_WHITE=false
+	CAMERA_WB=true
+	WHITE_SPD=15
+	isScale=false
+	SATPOINT=""
 
 #LUT
-LUT=""
-isLUT=false
+	LUT=""
+	isLUT=false
+}
+
+setDefaults
 
 help() {
 less -R << EOF
@@ -153,7 +157,7 @@ OPTIONS, BASIC:
 	-v, --version		version - Print out version string.
 	-h, --help		help - Print out this help page.
 	
-	-C, --config		CONFIG - Designates config file to use.
+	-C, --config		config - Designates config file to use.
 	
 	-o, --outdir <path>	OUTDIR - The path in which files will be placed.
 	-P, --res-path <path>	RES_PATH - The path in which all manual dependencies are looked for.
@@ -234,7 +238,7 @@ OPTIONS, COLOR:
 	
 	--white-speed [int]	WHITE_SPD - Samples used to calculate AWB
 	
-	--allow-white-clip	WHITE_SCALE - Let White Balance multipliers clip.
+	--allow-white-clip	WHITE_CLIP - Let White Balance multipliers clip.
 	
 	
 OPTIONS, FEATURES:
@@ -251,10 +255,11 @@ OPTIONS, FEATURES:
 	
 	-R <path>		dark_out - Specify to create a .darkframe file from passed in MLV.
 	 --> Outputs <arg>.darkframe file to <path>.
+	 --> THE .darkframe EXTENSION IS ADDED FOR YOU.
 	
 	
 OPTIONS, INFO:
-	-e			Output MLV settings.
+	-q			Output MLV settings.
 	
 	-K			Debian Package Deps - Output package dependecies.
 	  --> Install (Debian only): sudo apt-get install $ (./convmlv -K)
@@ -266,13 +271,40 @@ OPTIONS, INFO:
 	  --> There's no automatic way to install these. See http://www.magiclantern.fm/forum/index.php?topic=16799.0 .
 	
 CONFIG FILE:
-	Next to each option is an uppercased item, ex. OUTDIR. In a convmlv config file, you can specify this option
+	You do not need to type in all the arguments each time: Config files, another way to specify options, can save you time & lend
+	you convenience in production situations.
+	
+	GLOBAL: $HOME/convmlv.conf
+	LOCAL: Specify -C/--config.
+
+	Some options have an uppercased VARNAME, ex. OUTDIR. In a convmlv config file, you can specify this option
 	in the following format, line by line:
 		<VARNAME> <VALUE>
+		
+	If the value is a true/false flag, simply specifying VARNAME is enough. Otherwise, normal rules for the value applies.
 	
-	Some more notes regarding config files:
-		-The global config file, read every time, will be looked for in $HOME/convmlv.conf.
-		-Hashtags are considered comments, if and only if they are the first character in the line.
+	Options override each other as such:
+	-LOCAL overrides GLOBAL config.
+	-Passed arguments override both configs.
+	-Lines starting with # are comments.
+	-Name a config using the VARNAME: CONFIG_NAME <name>
+	
+	
+	File-Specific Block: A LOCAL config file lets you specify options for specific input names:
+		/ <TRUNCATED INPUTNAME>
+		...specify options
+		*
+		
+	$(echo -e "\e[1mFile-Specific Blocks override all other options.\e[0m") This allows one to create
+	a single config file to batch-develop several input files/folders at once, after deciding how each one should
+	look/be configured individually.
+	
+	Notes on Usage:
+	-You must use the truncated (no .mlv or .raw) input name after the /.
+	-No nested blocks.
+	-Indentation by tabs or spaces is allowed, but not enforced.
+	
+	
 		
 EOF
 }
@@ -307,33 +339,185 @@ mkdirS() {
 	
 }
 
-evalConf() { #Run BEFORE argument parsing.
+evalConf() {
+	file=$1 #The File to Parse
+	argOnly=$2 #If true, will only use file-specific blocks. If false, will ignore file-specific blocks.
+	CONFIG_NAME="None"
+	
+	if [[ -z $file ]]; then return; fi
+	
+	fBlock=false #Whether or not we are in a file-specific block.
+	
 	while IFS="" read -r line || [[ -n "$line" ]]; do
-		if [[ `echo "${line}" | cut -c1-1` == "#" ]]; then continue; fi
-		case `echo "${line}" | cut -d$' ' -f1` in
-			"OUTDIR") OUTDIR=`echo "${line}" | cut -d$' ' -f2`
-			;;
-			"RES_PATH") RES_PATH=`echo "${line}" | cut -d$' ' -f2`; setPaths
-			;;
-			"MLV_DUMP") MLV_DUMP=`echo "${line}" | cut -d$' ' -f2`
-			;;
-			"RAW_DUMP") RAW_DUMP=`echo "${line}" | cut -d$' ' -f2`
-			;;
-			"PYTHON") PYTHON=`echo "${line}" | cut -d$' ' -f2`; setPaths
-			;;
-			"MLV_BP") MLV_BP=`echo "${line}" | cut -d$' ' -f2`
-			;;
-			"THREADS") THREADS=`echo "${line}" | cut -d$' ' -f2`
-			;;
-		esac
-	done < "${HOME}/convmlv.conf"
+		line=$(echo "$line" | sed -e 's/^[ \t]*//') #Strip leading tabs/whitespaces.
+		
+		if [[ `echo "${line}" | cut -c1-1` == "#" ]]; then continue; fi #Ignore comments
+		
+		if [[ `echo "${line}" | cut -c1-1` == "/" && `echo "${line}" | cut -d$' ' -f2` == $TRUNC_ARG ]]; then
+			if [[ $fBlock == true ]]; then echo "\n\e[0;31m\e[1mWARNING: Nested blocks!!!\e[0m"; fi
+			fBlock=true
+		fi #Enter a file-specific block with /, provided the argument name is correct.
+		
+		if [[ `echo "${line}" | cut -c1-1` == "*" ]]; then fBlock=false; fi #Leave a file-specific block.
+			
+		if [[ ($argOnly == false && $fBlock == false) || ($argOnly == true && $fBlock == true) ]]; then #Conditions under which to write values.
+			case `echo "${line}" | cut -d$' ' -f1` in
+				"CONFIG_NAME") CONFIG_NAME=`echo "${line}" | cut -d$' ' -f2` #Not doing anything with this right now.
+				;;
+				"OUTDIR") OUTDIR=`echo "${line}" | cut -d$' ' -f2`
+				;;
+				"RES_PATH") RES_PATH=`echo "${line}" | cut -d$' ' -f2`; setPaths
+				;;
+				"MLV_DUMP") MLV_DUMP=`echo "${line}" | cut -d$' ' -f2`
+				;;
+				"RAW_DUMP") RAW_DUMP=`echo "${line}" | cut -d$' ' -f2`
+				;;
+				"MLV_BP") MLV_BP=`echo "${line}" | cut -d$' ' -f2`
+				;;
+				"SRANGE") CR_HDR=`echo "${line}" | cut -d$' ' -f2`
+				;;
+				"BAL") PYTHON_SRANGE=`echo "${line}" | cut -d$' ' -f2`; setPaths
+				;;
+				"PYTHON") PYTHON=`echo "${line}" | cut -d$' ' -f2`; setPaths
+				;;
+				"THREADS") THREADS=`echo "${line}" | cut -d$' ' -f2`
+				;;
+				
+				
+				"IMAGE") IMAGES=true
+				;;
+				"IMG_FMT")
+					mode=`echo "${line}" | cut -d$' ' -f2`
+					case ${mode} in
+						"0") IMG_FMT="exr"
+						;;
+						"1") IMG_FMT="tiff"
+						;;
+						"2") IMG_FMT="png"
+						;;
+						"3") IMG_FMT="dpx"
+						;;
+					esac
+					;;
+				"MOVIE") MOVIE=true
+				;;
+				"PROXY") 
+					PROXY=`echo "${line}" | cut -d$' ' -f2`
+					case ${PROXY} in
+						"0") isJPG=false; isH264=false
+						;;
+						"1") isJPG=false; isH264=true
+						;;
+						"2") isJPG=true; isH264=false
+						;;
+						"3") isJPG=true; isH264=true
+						;;
+					esac
+				;;
+				"PROXY_SCALE") PROXY_SCALE=`echo "${line}" | cut -d$' ' -f2`
+				;;
+				"KEEP_DNGS") KEEP_DNGS=true
+				;;
+				"FRAME_RANGE") RANGE_BASE=`echo "${line}" | cut -d$' ' -f2`; isFR=false
+				;;
+				"UNCOMP") isCOMPRESS=false
+				;;
+				
+				
+				"DEMO_MODE") DEMO_MODE=`echo "${line}" | cut -d$' ' -f2`
+				;;
+				"HIGHLIGHT_MODE") HIGHLIGHT_MODE=`echo "${line}" | cut -d$' ' -f2`
+				;;
+				"CHROMA_SMOOTH")
+					mode=`echo "${line}" | cut -d$' ' -f2`
+					case ${mode} in
+						"0") CHROMA_SMOOTH="--no-cs"
+						;;
+						"1") CHROMA_SMOOTH="--cs2x2"
+						;;
+						"2") CHROMA_SMOOTH="--cs3x3"
+						;;
+						"3") CHROMA_SMOOTH="--cs5x5"
+						;;
+					esac
+				;;
+				"NOISE_REDUC") NOISE_REDUC="-n $(echo "${line}" | cut -d$' ' -f2)"
+				;;
+				"SPACE") 
+					mode=`echo "${line}" | cut -d$' ' -f2`
+					case ${mode} in
+						"0")
+							GAMMA="1 1"
+							#~ SPACE="0" #What's going on here?
+						;;
+						"1")
+							GAMMA="2.2 0"
+							#~ SPACE="2"
+						;;
+						"2")
+							GAMMA="1.8 0"
+							#~ SPACE="4"
+						;;
+						"3")
+							GAMMA="2.4 12.9"
+							#~ SPACE="1"
+						;;
+						"4")
+							GAMMA="2.222 4.5"
+							#~ SPACE="0"
+						;;
+					esac
+				;;
+				"SHALLOW") DEPTH=""; DEPTH_OUT="-depth 8"
+				;;
+				"WHITE")
+					mode=`echo "${line}" | cut -d$' ' -f2`
+					case ${mode} in
+						"0") CAMERA_WB=false; GEN_WHITE=true #Will generate white balance.
+						;;
+						"1") CAMERA_WB=true; GEN_WHITE=false; #Will use camera white balance.
+						;;
+						"2") WHITE="-r 1 1 1 1"; CAMERA_WB=false; GEN_WHITE=false #Will not apply any white balance.
+						;;
+					esac
+				;;
+				"LUT")
+					LUT_PATH=`echo "${line}" | cut -d$' ' -f2`
+					if [ ! -f $LUT_PATH ]; then
+						echo "LUT not found!!!"
+						echo $LUT_PATH
+						exit 1
+					fi
+					LUT="lut3d=${LUT_PATH}"
+					isLUT=true
+				;;
+				"SATPOINT") SATPOINT="-S $(echo "${line}" | cut -d$' ' -f2)"
+				;;
+				"WHITE_SPD") WHITE_SPD=`echo "${line}" | cut -d$' ' -f2`
+				;;
+				"WHITE_CLIP") isScale=true
+				;;
+				
+				
+				"DUAL_ISO") DUAL_ISO=true
+				;;
+				"BADPIXELS") isBP=true
+				;;
+				"BADPIXEL_PATH") BADPIXEL_PATH=`echo "${line}" | cut -d$' ' -f2`
+				;;
+				"DARKFRAME") DARKFRAME=`echo "${line}" | cut -d$' ' -f2`
+				;;
+			esac
+		fi
+	done < "$1"
 }
 
 parseArgs() { #Amazing new argument parsing!!!
 	longArg() { #Creates VAL
 		ret="${!OPTIND}"; OPTIND=$(( $OPTIND + 1 ))
 	}
-	while getopts "vh C o:P: T:  i t: m p: s: k r:  d: f H: c: n: g:  w: l: S:  u b a: F:  e K Y N    -:" opt; do
+	while getopts "vh C: o:P: T:  i t: m p: s: k r:  d: f H: c: n: g:  w: l: S:  u b a: F: R:  q K Y N    -:" opt; do
+		#~ echo $opt ${OPTARG}
 		case "$opt" in
 			-) #Long Arguments
 				case ${OPTARG} in
@@ -349,7 +533,8 @@ parseArgs() { #Amazing new argument parsing!!!
 						exit 0
 						;;
 					config)
-						echo "To Be Implemented!"
+						val="${!OPTIND}"; OPTIND=$(( $OPTIND + 1 ))
+						LCONFIG=$val
 						;;
 					res-path)
 						val="${!OPTIND}"; OPTIND=$(( $OPTIND + 1 ))
@@ -427,7 +612,7 @@ parseArgs() { #Amazing new argument parsing!!!
 				exit 0
 				;;
 			C)
-				echo "To Be Implemented!"
+				LCONFIG=${OPTARG}
 				;;
 			o)
 				OUTDIR=${OPTARG}
@@ -542,9 +727,9 @@ parseArgs() { #Amazing new argument parsing!!!
 				case ${mode} in
 					"0") CAMERA_WB=false; GEN_WHITE=true #Will generate white balance.
 					;;
-					"1") CAMERA_WB=true; GEN_WHITE=false;
+					"1") CAMERA_WB=true; GEN_WHITE=false; #Will use camera white balance.
 					;;
-					"2") WHITE="-r 1 1 1 1"; CAMERA_WB=false; GEN_WHITE=false
+					"2") WHITE="-r 1 1 1 1"; CAMERA_WB=false; GEN_WHITE=false #Will not apply any white balance.
 					;;
 				esac
 				;;
@@ -559,8 +744,7 @@ parseArgs() { #Amazing new argument parsing!!!
 				isLUT=true
 				;;
 			S)
-				tmpSat=${OPTARG}
-				SATPOINT="-S ${tmpSat}"
+				SATPOINT="-S ${OPTARG}"
 				;;
 			
 			
@@ -577,11 +761,12 @@ parseArgs() { #Amazing new argument parsing!!!
 				DARKFRAME=${OPTARG}
 				;;
 			R)
-				echo "To Be Implemented"
+				MK_DARK=true
+				DARK_OUT=${OPTARG}
 				;;
 			
 			
-			e)
+			q)
 				SETTINGS_OUTPUT=true
 				;;
 			K)
@@ -731,47 +916,76 @@ mlvSet() {
 	KELVIN=`echo "$camDump" | grep 'Kelvin' | sed 's/[[:alpha:] ]*:   //' | cut -d$'\n' -f1`
 }
 
-rawSet() { #Set as many options as the RAW spec will allow. Grey out the rest.
-	#~ camDump=$(${MLV_DUMP} -v -m ${ARG}) #Read it in *once*; otherwise it's unbearably slow on external media.
+rawSet() { #To be implemented maybe - exiftool? Or raw_dump?
+	CAM_NAME="Unknown"
+	FRAMES="Unknown"
+	ISO="Unknown"
+	APERTURE="Unknown"
+	LEN_FOCAL="Unknown"
+	SHUTTER="Unknown"
+	REC_DATE="Unknown"
+	REC_TIME="Unknown"
+	KELVIN="Unknown"
+}
+
+dngSet() { #Set as many options as the RAW spec will allow. Grey out the rest.
+	for dng in $ARG/*.dng; do
+		dataDNG=$dng
+	done
 	
-	#~ FPS=`echo "$camDump" | grep FPS | awk 'FNR == 1 {print $3}'`
-			
-	#~ CAM_NAME=`echo "$camDump" | grep 'Camera Name' | cut -d "'" -f 2`
-	#~ FRAMES=`echo "$camDump" | awk '/Processed/ { print $2; }'` #Use actual processed frames as opposed to what the sometimes incorrect metadata thinks.
-	#~ ISO=`echo "$camDump" | grep 'ISO' | sed 's/[[:alpha:] ]*:        //' | cut -d$'\n' -f2`
-	#~ APERTURE=`echo "$camDump" | grep 'Aperture' | sed 's/[[:alpha:] ]*:    //' | cut -d$'\n' -f1`
-	#~ LEN_FOCAL=`echo "$camDump" | grep 'Focal Len' | sed 's/[[:alpha:] ]*:   //' | cut -d$'\n' -f1`
-	#~ SHUTTER=`echo "$camDump" | grep 'Shutter' | sed 's/[[:alpha:] ]*:   //' | grep -oP '\(\K[^)]+' |  cut -d$'\n' -f1`
-	#~ REC_DATE=`echo "$camDump" | grep 'Date' | sed 's/[[:alpha:] ]*:        //' | cut -d$'\n' -f1`
-	#~ REC_TIME=`echo "$camDump" | grep 'Time:        [0-2][0-9]\:*' | sed 's/[[:alpha:] ]*:        //' | cut -d$'\n' -f1`
-	#~ KELVIN=`echo "$camDump" | grep 'Kelvin' | sed 's/[[:alpha:] ]*:   //' | cut -d$'\n' -f1`
-	echo ''
+	FPS=24 #Standard FPS.
+	
+	CAM_NAME=$(exiftool -UniqueCameraModel -s -s -s $dataDNG)
+	ISO=$(exiftool -UniqueCameraModel -s -s -s $dataDNG)
+	APERTURE=$(exiftool -ApertureValue -s -s -s $dataDNG)
+	LEN_FOCAL=$(exiftool -FocalLength -s -s -s $dataDNG)
+	SHUTTER=$(exiftool -ShutterSpeed -s -s -s $dataDNG)
+	REC_DATE=$(echo "$(exiftool -DateTimeOriginal -s -s -s $dataDNG)" | cut -d$' ' -f1)
+	REC_TIME=$(echo "$(exiftool -DateTimeOriginal -s -s -s $dataDNG)" | cut -d$' ' -f2)
+	KELVIN="Unknown"
 }
 
 if [ $# == 0 ]; then
 	echo -e "\e[0;31m\e[1mNo arguments given.\e[0m\n\tType 'convmlv -h/--help' to see help page, or 'convmlv -v/--version' for current version string."
 fi
 
-parseArgs "$@" #Parse all arguments.
+
+#MANUAL SANDBOXING + OPTION SOURCES - Making sure global, local, command line options all override each other correctly.
+evalConf "$GCONFIG" false #Parse global config file.
+parseArgs "$@" #First, parse it all to set LCONFIG.
+shift $((OPTIND-1)) #Shift past all of the options to the file arguments.
+OPTIND=1 #To reset argument parsing, we must set OPTIND to 1.
+
+evalConf "$LCONFIG" false #Parse local config file.
+set -- $INPUT_ARGS #Reset the argument input for reparsing.
+
+parseArgs "$@" #Parse it all again to override config file options.
 shift $((OPTIND-1))
+OPTIND=1
+
+
 
 ARGNUM=$#
+FILE_ARGS="$@"
+IFS=' ' read -r -a FILE_ARGS_ITER <<< $FILE_ARGS #Need to make it an array for iteration purposes.
 
-for ARG in $@; do #All remaining mass-arguments
+for ARG in "${FILE_ARGS_ITER[@]}"; do #Go through FILE_ARGS, copied from parsed $@ because $@ is going to be changing on 'set --'
 	ARG="$(pwd)/${ARG}"
+	
 	if [[ $OSTYPE == "linux-gnu" ]]; then
 		ARG="$(readlink -f $ARG)"  >/dev/null 2>/dev/null #Relative ARG only fixed on Linux, as readlink only exists in UNIX. Mac variant?
 	fi
-#Evaluate convmlv.conf configuration file. Very limited for now.
-	evalConf
-#Check that things exist.
-	checkDeps
 	
 #The Very Basics
 	BASE="$(basename "$ARG")"
 	EXT="${BASE##*.}"
 	TRUNC_ARG="${BASE%.*}"
 	setBL=true
+	
+#Evaluate convmlv.conf configuration file for file-specific blocks.
+	evalConf "$LCONFIG" true
+#Check that things exist.
+	checkDeps
 
 #Potentially Print Settings
 	if [ $SETTINGS_OUTPUT == true ]; then
@@ -782,9 +996,29 @@ for ARG in $@; do #All remaining mass-arguments
 			echo -e "\n\e[1m\e[0;32m\e[1mFile\e[0m\e[0m: ${ARG}\n"
 			prntSet
 			continue
+		elif [ $EXT == "RAW" ] || [ $EXT == "raw" ]; then
+			rawSet
+			
+			echo -e "\n\e[1m\e[0;32m\e[1mFile\e[0m\e[0m: ${ARG}\n"
+			prntSet
+			continue
+		elif [ -d $ARG ]; then
+			dngSet
+			
+			echo -e "\n\e[1m\e[0;32m\e[1mFile\e[0m\e[0m: ${ARG}\n"
+			prntSet
+			continue
 		else
 			echo -e "Cannot print settings from ${ARG}; it's not an MLV file!"
+			continue
 		fi
+	fi
+	
+	if [[ $MK_DARK == true ]]; then 
+		echo -e "\n\e[1m\e[0;32m\e[1mAveraging Darkframe File\e[0m: ${ARG}"
+		$MLV_DUMP -o $DARK_OUT $ARG 2>/dev/null 1>/dev/null
+		echo -e "\n\e[1m\e[1mWrote Darkframe File\e[0m: ${DARK_OUT}\n"
+		continue
 	fi
 	
 #List remaining files to process.
@@ -820,6 +1054,22 @@ for ARG in $@; do #All remaining mass-arguments
 	
 	FILE="${OUTDIR}/${TRUNC_ARG}"
 	TMP="${FILE}/tmp_${TRUNC_ARG}"
+	
+	setRange() {
+		#FRAMES must be set at this point.
+		if [[ $isFR == true ]]; then #Ensure that FRAME_RANGE is set.
+			FRAME_RANGE="1-${FRAMES}"
+			FRAME_START="1"
+			FRAME_END=$FRAMES
+		else
+			base=$(echo $RANGE_BASE | sed -e 's:s:0:g' | sed -e "s:e:$(echo "$FRAMES - 1" | bc):g") #FRAMES is incremented in a moment.
+			
+			#~ FRAME_RANGE_ZERO="$(echo $base | cut -d"-" -f1)-$(echo $base | cut -d"-" -f2)" #Number from 0. Useless as of now.
+			FRAME_RANGE="$(echo "$(echo $base | cut -d"-" -f1) + 1" | bc)-$(echo "$(echo $base | cut -d"-" -f2) + 1" | bc)" #Number from 1.
+			FRAME_START=$(echo ${FRAME_RANGE} | cut -d"-" -f1)
+			FRAME_END=$(echo ${FRAME_RANGE} | cut -d"-" -f2)
+		fi
+	}
 	
 #Manage if it's a DNG argument, reused or not. Also, create FILE and TMP.
 	DEVELOP=true
@@ -871,13 +1121,23 @@ for ARG in $@; do #All remaining mass-arguments
 		mkdirS $FILE
 		mkdirS $TMP
 		
-		FPS=24 #Set it to a safe default.
-		
 		echo -e "\e[1m${TRUNC_ARG}:\e[0m Using specified folder of RAW sequences...\n" #Use prespecified DNG sequence.
 		
-		find $ARG -iname "*.dng" | xargs -I {} cp {} $TMP #Copying DNGs to TMP.
+		setRange
 		
+		i=0
+		for dng in $ARG/*.dng; do
+			cp $dng $(printf "${TMP}/${TRUNC_ARG}_%06d.dng" $i)
+			let i++
+			if [[ i -gt $FRAME_END ]]; then break; fi
+		done
+		
+		FPS=24 #Set it to a safe default.
 		FRAMES=$(find ${TMP} -name "*.dng" | wc -l)
+		
+		dngSet
+		
+		DEVELOP=false #We're not developing DNG's; we already have them!
 	else
 		mkdirS $FILE
 		mkdirS $TMP
@@ -901,22 +1161,6 @@ for ARG in $@; do #All remaining mass-arguments
 		DARK_PROC="-s ${avgFrame}"
 	fi
 
-	setRange() {
-		#FRAMES must be set at this point.
-		if [[ $isFR == true ]]; then #Ensure that FRAME_RANGE is set.
-			FRAME_RANGE="1-${FRAMES}"
-			FRAME_START="1"
-			FRAME_END=$FRAMES
-		else
-			base=$(echo $RANGE_BASE | sed -e 's:s:0:g' | sed -e "s:e:$(echo "$FRAMES - 1" | bc):g") #FRAMES is incremented in a moment.
-			
-			#~ FRAME_RANGE_ZERO="$(echo $base | cut -d"-" -f1)-$(echo $base | cut -d"-" -f2)" #Number from 0. Useless as of now.
-			FRAME_RANGE="$(echo "$(echo $base | cut -d"-" -f1) + 1" | bc)-$(echo "$(echo $base | cut -d"-" -f2) + 1" | bc)" #Number from 1.
-			FRAME_START=$(echo ${FRAME_RANGE} | cut -d"-" -f1)
-			FRAME_END=$(echo ${FRAME_RANGE} | cut -d"-" -f2)
-		fi
-	}
-
 #Develop sequence if needed.
 	if [ $DEVELOP == true ]; then
 		echo -e "\e[1m${TRUNC_ARG}:\e[0m Dumping to DNG Sequence...\n"
@@ -937,9 +1181,6 @@ for ARG in $@; do #All remaining mass-arguments
 			# Read the header for interesting settings :) .
 			mlvSet
 			setRange
-			
-			prntSet > $FILE/settings.txt
-			sed -i -r "s/\x1B\[([0-9]{1,2}(;[0-9]{1,2})?)?[m|K]//g" $FILE/settings.txt #Strip escape sequences.
 			
 			#Dual ISO might want to do the chroma smoothing. In which case, don't do it now!
 			if [ $DUAL_ISO == true ]; then
@@ -996,7 +1237,7 @@ for ARG in $@; do #All remaining mass-arguments
 			}
 
 			export -f devDNG #Export to run in subshell.
-
+			
 			for range in "${fileRanges[@]}"; do echo $range; done | #For each frame range, assign a thread.
 				xargs -I {} -P $THREADS -n 1 \
 					bash -c "devDNG '{}' '$MLV_DUMP' '$REAL_MLV' '$DARK_PROC' '$tmpOut' '$smooth' '$TMP' '$FRAME_END' '$TRUNC_ARG'"
@@ -1015,8 +1256,9 @@ for ARG in $@; do #All remaining mass-arguments
 				done
 				rm -r $tmpOut #Remove the now empty subfolder
 			done
-			
+						
 		elif [ $EXT == "RAW" ] || [ $EXT == "raw" ]; then
+			rawSet
 			echo -e $rawStat
 			FPS=`$RAW_DUMP $ARG "${TMP}/${TRUNC_ARG}_" | awk '/FPS/ { print $3; }'` #Run the dump while awking for the FPS.
 		fi
@@ -1025,6 +1267,9 @@ for ARG in $@; do #All remaining mass-arguments
 	fi
 	
 	BLACK_LEVEL=$(exiftool -BlackLevel -s -s -s ${TMP}/${TRUNC_ARG}_$(printf "%06d" $(echo "$FRAME_START" | bc)).dng) #Use the first DNG to get the correct black level.
+	
+	prntSet > $FILE/settings.txt
+	sed -i -r "s/\x1B\[([0-9]{1,2}(;[0-9]{1,2})?)?[m|K]//g" $FILE/settings.txt #Strip escape sequences.
 	
 	setRange #Just to be sure the frame range was set, in case the input isn't MLV.
 	
@@ -1132,7 +1377,7 @@ for ARG in $@; do #All remaining mass-arguments
 		
 		#Calculate n, the distance between samples.
 		frameLen=$(echo "$FRAME_END - $FRAME_START" | bc)
-		if [ $WHITE_SPD -gt $frameLen ]; then
+		if [[ $WHITE_SPD -gt $frameLen ]]; then
 			WHITE_SPD=$frameLen
 		fi
 		n=`echo "${frameLen} / ${WHITE_SPD}" | bc`
@@ -1372,6 +1617,21 @@ for ARG in $@; do #All remaining mass-arguments
 	
 #Delete tmp
 	rm -rf $TMP
+	
+#MANUAL SANDBOXING - see note at the header of the loop.
+	setDefaults #Hard reset everything.
+	
+	evalConf "$GCONFIG" false #Rearse global config file.
+	parseArgs "$@" #First, parse args all to set LCONFIG.
+	shift $((OPTIND-1))
+	OPTIND=1
+
+	evalConf "$LCONFIG" false #Parse local config file.
+	set -- $INPUT_ARGS #Reset the argument input for reparsing again, over the local config file.
+
+	parseArgs "$@"
+	shift $((OPTIND-1))
+	OPTIND=1
 	
 	let ARGNUM--
 done

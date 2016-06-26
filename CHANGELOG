@@ -1,4 +1,10 @@
 [code]
+[b]v1.9.1[/b]: [url=https://bitbucket.org/so-rose/convmlv/src]https://bitbucket.org/so-rose/convmlv/src[/url]
+[size=8pt]*Fully Supported Config Files! Check the help page; all options for which this makes sense can be specified in global, local, or file-specific config files.[/size]
+[size=8pt]*File-Specific Blocks: With this, just make one config file w/any special options per file, and you're done. Huge time saver in production situations![/size]
+[size=8pt]*Create Darkframes: You no longer have to create your averaged .darkframe files yourself. 'convmlv -R df <MLV FILE>' creates a file named df.darkframe; -F develops using it.[/size]
+[size=8pt]*DNG Improvements: It works now (that's nice :) ), but settings.txt is also created properly now. Plus, bug fixes abound![/size]
+
 [b]v1.9.0[/b]: [url=https://bitbucket.org/so-rose/convmlv/src]https://bitbucket.org/so-rose/convmlv/src[/url]
 [size=8pt]*Sane Argument Parsing! You can now choose to use spaces![/size]
 [size=8pt]*DNG: Multithreaded mlv_dump with progress bar![/size]

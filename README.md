@@ -19,7 +19,7 @@ INFO:
 	  -->Acceptable Inputs: MLV, RAW, DNG Folder.
 	  -->Option Input: From command line or config file.
 	
-VERSION: 1.9.1
+VERSION: 1.9.2
 	
 MANUAL DEPENDENCIES:
 	-mlv_dump: Required. http://www.magiclantern.fm/forum/index.php?topic=7122.0
@@ -54,6 +54,7 @@ OPTIONS, OUTPUT:
 	
 	-t [0:3]		IMG_FMT - Specified image output format.
 	  --> 0: EXR (default), 1: TIFF, 2: PNG, 3: Cineon (DPX)."
+	  --> Note: Only EXR supports Linear output. Specify -g 3 if not using EXR.
 	
 	-m			MOVIE - Will output a Prores4444 file.
 	
@@ -91,8 +92,12 @@ OPTIONS, RAW DEVELOPMENT:
 	  --> 0: None (default). 1: 2x2. 2: 3x3. 3: 5x5.
 	  --> MLV Only.
 	
-	-n [int]		NOISE_REDUC - Apply wavelet denoising.
-	  --> Default: None. Subtle: 50. Medium: 100. Strong: 200.
+	-n [int]		WAVE_NOISE - Apply wavelet denoising.
+	  --> Default: None. Subtle: 25. Medium: 50. Strong: 125.
+	  
+	-N <A>-<B>		TEMP_NOISE - Apply temporal denoising.
+	  --> A: 0 to 0.3. B: 0 to 5. A reacts to abrupt noise (splotches), B reacts to noise over time (fast motion causes artifacts).
+	  --> Subtle: 0.03-0.04. High: 0.15-0.04. High, Predictable Motion: 0.15-0.07
 	
 	-g [0:4]		SPACE - Output color transformation.
 	  --> 0: Linear. 1: 2.2 (Adobe RGB). 2: 1.8 (ProPhoto RGB). 3: sRGB. 4: BT.709.
@@ -102,6 +107,82 @@ OPTIONS, RAW DEVELOPMENT:
 	
 OPTIONS, COLOR:
 	-w [0:2]		WHITE - This is a modal white balance setting.
+	  --> 0: Auto WB. 1: Camera WB (default). 2: No Change.
+	  
+	-l <path>		LUT - Specify a LUT to apply.
+	  --> Supports cube, 3dl, dat, m3d.
+	  
+	-S [int]		SATPOINT - Specify the 14-bit saturation point of your camera.
+	  --> Lower if -H1 yields purple highlights. Must be correct for highlight reconstruction.
+	  --> Determine using the max value of 'dcraw -D -j -4 -T'
+	
+	--white-speed [int]	WHITE_SPD - Samples used to calculate AWB
+	
+	--allow-white-clip	WHITE_CLIP - Let White Balance multipliers clip.
+	
+	
+OPTIONS, FEATURES:
+	-u			DUAL_ISO - Process as dual ISO.
+	
+	-b			BADPIXELS - Fix focus pixels issue using dfort's script.
+	
+	-a <path>		BADPIXEL_PATH - Use your own .badpixels file.
+	  --> How to: http://www.dl-c.com/board/viewtopic.php?f=4&t=686
+	
+	-F <path>		DARKFRAME - This is the path to a "dark frame MLV"; effective for noise reduction.
+	  --> How to: Record 5 sec w/lens cap on & same settings as footage. Pass MLV in here.
+	  --> If the file extension is '.darkframe', the file will be used as the preaveraged dark frame.
+	
+	-R <path>		dark_out - Specify to create a .darkframe file from passed in MLV.
+	 --> Outputs <arg>.darkframe file to <path>.
+	 --> THE .darkframe EXTENSION IS ADDED FOR YOU.
+	
+	
+OPTIONS, INFO:
+	-q			Output MLV settings.
+	
+	-K			Debian Package Deps - Output package dependecies.
+	  --> Install (Debian only): sudo apt-get install $ (./convmlv -K)
+	
+	-Y			Python Deps - Lists Python dependencies. Works directly with pip.
+	  -->Install (Linux): sudo pip3 install $ (./convmlv -Y)
+	
+	-M			Manual Deps - Lists manual dependencies, which must be downloaded by hand.
+	  --> There's no automatic way to install these. See http://www.magiclantern.fm/forum/index.php?topic=16799.0 .
+	
+CONFIG FILE:
+	You do not need to type in all the arguments each time: Config files, another way to specify options, can save you time & lend
+	you convenience in production situations.
+	
+	GLOBAL: /home/sofus/convmlv.conf
+	LOCAL: Specify -C/--config.
+
+	Some options have an uppercased VARNAME, ex. OUTDIR. In a convmlv config file, you can specify this option
+	in the following format, line by line:
+		<VARNAME> <VALUE>
+		
+	If the value is a true/false flag, simply specifying VARNAME is enough. Otherwise, normal rules for the value applies.
+	
+	Options override each other as such:
+	-LOCAL overrides GLOBAL config.
+	-Passed arguments override both configs.
+	-Lines starting with # are comments.
+	-Name a config using the VARNAME: CONFIG_NAME <name>
+	
+	
+	File-Specific Block: A LOCAL config file lets you specify options for specific input names:
+		/ <TRUNCATED INPUTNAME>
+			...specify options
+		*
+		
+	File-Specific Blocks override all other options. This allows one to create
+	a single config file to batch-develop several input files/folders at once, after deciding how each one should
+	look/be configured individually.
+	
+	Notes on Usage:
+	-You must use the truncated (no .mlv or .raw) input name after the /.
+	-No nested blocks.
+	-Indentation by tabs or spaces is allowed, but not enforced.	-w [0:2]		WHITE - This is a modal white balance setting.
 	  --> 0: Auto WB. 1: Camera WB (default). 2: No Change.
 	  
 	-l <path>		LUT - Specify a LUT to apply.
@@ -168,7 +249,7 @@ CONFIG FILE:
 	
 	File-Specific Block: A LOCAL config file lets you specify options for specific input names:
 		/ <TRUNCATED INPUTNAME>
-		...specify options
+			...specify options
 		*
 		
 	File-Specific Blocks override all other options. This allows one to create

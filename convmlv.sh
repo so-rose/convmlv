@@ -9,6 +9,7 @@
 #~ --> A different module (like -e) for live viewing of footage, under convmlv settings. Danne is working on this :).
 
 #BUG: Relative OUTDIR makes baxpixel generation fail if ./mlv2badpixels.sh doesn't exist. Fixed on Linux only.
+#BUG: Colorspace Bug Affecting all but EXR output.
 
 
 #~ The MIT License (MIT)
@@ -34,7 +35,7 @@
 #~ SOFTWARE.
 
 #BASIC VARS
-VERSION="1.9.1" #Version string.
+VERSION="1.9.2" #Version string.
 INPUT_ARGS=$(echo "$@") #The original input argument string.
 
 if [[ $OSTYPE == "linux-gnu" ]]; then
@@ -103,7 +104,7 @@ setDefaults() { #Set all the default variables. Run here, and also after each AR
 	SPACE="0" #Color Space. Correlates to Gamma.
 	DEPTH="-W -6"
 	DEPTH_OUT="-depth 16"
-	NOISE_REDUC=""
+	WAVE_NOISE="" #Used to be NOISE_REDUC. Wavelet noise reduction.
 	FOUR_COLOR=""
 	CHROMA_SMOOTH="--no-cs"
 
@@ -126,7 +127,10 @@ setDefaults() { #Set all the default variables. Run here, and also after each AR
 	isScale=false
 	SATPOINT=""
 
-#LUT
+#FFMPEG Filters
+	FFMPEG_FILTERS=false #Whether or not FFMPEG filters are going to be used.
+	TEMP_NOISE="" #Temporal noise reduction.
+	isTemp=false
 	LUT=""
 	isLUT=false
 }
@@ -179,6 +183,7 @@ OPTIONS, OUTPUT:
 	
 	-t [0:3]		IMG_FMT - Specified image output format.
 	  --> 0: EXR (default), 1: TIFF, 2: PNG, 3: Cineon (DPX)."
+	  --> Note: Only EXR supports Linear output. Specify -g 3 if not using EXR.
 	
 	-m			MOVIE - Will output a Prores4444 file.
 	
@@ -216,8 +221,12 @@ OPTIONS, RAW DEVELOPMENT:
 	  --> 0: None (default). 1: 2x2. 2: 3x3. 3: 5x5.
 	  --> MLV Only.
 	
-	-n [int]		NOISE_REDUC - Apply wavelet denoising.
-	  --> Default: None. Subtle: 50. Medium: 100. Strong: 200.
+	-n [int]		WAVE_NOISE - Apply wavelet denoising.
+	  --> Default: None. Subtle: 25. Medium: 50. Strong: 125.
+	  
+	-N <A>-<B>		TEMP_NOISE - Apply temporal denoising.
+	  --> A: 0 to 0.3. B: 0 to 5. A reacts to abrupt noise (splotches), B reacts to noise over time (fast motion causes artifacts).
+	  --> Subtle: 0.03-0.04. High: 0.15-0.04. High, Predictable Motion: 0.15-0.07
 	
 	-g [0:4]		SPACE - Output color transformation.
 	  --> 0: Linear. 1: 2.2 (Adobe RGB). 2: 1.8 (ProPhoto RGB). 3: sRGB. 4: BT.709.
@@ -231,7 +240,6 @@ OPTIONS, COLOR:
 	  
 	-l <path>		LUT - Specify a LUT to apply.
 	  --> Supports cube, 3dl, dat, m3d.
-	  --> LUT cannot be applied to EXR sequences.
 	  
 	-S [int]		SATPOINT - Specify the 14-bit saturation point of your camera.
 	  --> Lower if -H1 yields purple highlights. Must be correct for highlight reconstruction.
@@ -268,7 +276,7 @@ OPTIONS, INFO:
 	-Y			Python Deps - Lists Python dependencies. Works directly with pip.
 	  -->Install (Linux): sudo pip3 install $ (./convmlv -Y)
 	
-	-N			Manual Deps - Lists manual dependencies, which must be downloaded by hand.
+	-M			Manual Deps - Lists manual dependencies, which must be downloaded by hand.
 	  --> There's no automatic way to install these. See http://www.magiclantern.fm/forum/index.php?topic=16799.0 .
 	
 CONFIG FILE:
@@ -304,9 +312,6 @@ CONFIG FILE:
 	-You must use the truncated (no .mlv or .raw) input name after the /.
 	-No nested blocks.
 	-Indentation by tabs or spaces is allowed, but not enforced.
-	
-	
-		
 EOF
 }
 
@@ -442,7 +447,17 @@ evalConf() {
 						;;
 					esac
 				;;
-				"NOISE_REDUC") NOISE_REDUC="-n $(echo "${line}" | cut -d$' ' -f2)"
+				"WAVE_NOISE") WAVE_NOISE="-n $(echo "${line}" | cut -d$' ' -f2)"
+				;;
+				"TEMP_NOISE")
+					vals="$(echo "${line}" | cut -d$' ' -f2)"
+					
+					aVal=$(echo "${vals}" | cut -d"-" -f1)
+					bVal=$(echo "${vals}" | cut -d"-" -f2)
+					
+					TEMP_NOISE="atadenoise=0a=${aVal}:0b=${bVal}:1a=${aVal}:1b=${bVal}:2a=${aVal}:2b=${bVal}"
+					isTemp=true
+					FFMPEG_FILTERS=true
 				;;
 				"SPACE") 
 					mode=`echo "${line}" | cut -d$' ' -f2`
@@ -484,13 +499,16 @@ evalConf() {
 				;;
 				"LUT")
 					LUT_PATH=`echo "${line}" | cut -d$' ' -f2`
+					
 					if [ ! -f $LUT_PATH ]; then
 						echo "LUT not found!!!"
 						echo $LUT_PATH
 						exit 1
 					fi
+					
 					LUT="lut3d=${LUT_PATH}"
 					isLUT=true
+					FFMPEG_FILTERS=true
 				;;
 				"SATPOINT") SATPOINT="-S $(echo "${line}" | cut -d$' ' -f2)"
 				;;
@@ -517,7 +535,7 @@ parseArgs() { #Amazing new argument parsing!!!
 	longArg() { #Creates VAL
 		ret="${!OPTIND}"; OPTIND=$(( $OPTIND + 1 ))
 	}
-	while getopts "vh C: o:P: T:  i t: m p: s: k r:  d: f H: c: n: g:  w: l: S:  u b a: F: R:  q K Y N    -:" opt; do
+	while getopts "vh C: o:P: T:  i t: m p: s: k r:  d: f H: c: n: N: g:  w: l: S:  u b a: F: R:  q K Y M    -:" opt; do
 		#~ echo $opt ${OPTARG}
 		case "$opt" in
 			-) #Long Arguments
@@ -694,7 +712,17 @@ parseArgs() { #Amazing new argument parsing!!!
 				esac
 				;;
 			n)
-				NOISE_REDUC="-n ${OPTARG}"
+				WAVE_NOISE="-n ${OPTARG}"
+				;;
+			N)
+				vals=${OPTARG}
+					
+				aVal=$(echo "${vals}" | cut -d"-" -f1)
+				bVal=$(echo "${vals}" | cut -d"-" -f2)
+				
+				TEMP_NOISE="atadenoise=0a=${aVal}:0b=${bVal}:1a=${aVal}:1b=${bVal}:2a=${aVal}:2b=${bVal}"
+				isTemp=true
+				FFMPEG_FILTERS=true
 				;;
 			g)
 				mode=${OPTARG}
@@ -772,12 +800,13 @@ parseArgs() { #Amazing new argument parsing!!!
 				;;
 			K)
 				echo $DEB_DEPS
+				exit 0
 				;;
 			Y)
 				echo $PIP_DEPS
 				exit 0
 				;;
-			N)
+			M)
 				echo $MAN_DEPS
 				exit 0
 				;;
@@ -982,7 +1011,15 @@ for ARG in "${FILE_ARGS_ITER[@]}"; do #Go through FILE_ARGS_ITER array, copied f
 	BASE="$(basename "$ARG")"
 	EXT="${BASE##*.}"
 	TRUNC_ARG="${BASE%.*}"
+	SCALE=`echo "($(echo "${PROXY_SCALE}" | sed 's/%//') / 100) * 2" | bc -l` #Get scale as factor for halved video, *2 for 50%
 	setBL=true
+	
+	joinArgs() { local IFS="$1"; shift; echo "$*"; }
+			
+	#Construct the FFMPEG filters.
+	FINAL_SCALE="scale=trunc(iw/2)*${SCALE}:trunc(ih/2)*${SCALE}"
+	V_FILTERS="-vf $(joinArgs , ${TEMP_NOISE} ${LUT})"
+	V_FILTERS_PROX="-vf $(joinArgs , ${TEMP_NOISE} ${LUT} ${proxy_scale})" #Proxy filters add the scale component.
 	
 #Evaluate convmlv.conf configuration file for file-specific blocks.
 	evalConf "$LCONFIG" true
@@ -1073,7 +1110,7 @@ for ARG in "${FILE_ARGS_ITER[@]}"; do #Go through FILE_ARGS_ITER array, copied f
 		fi
 	}
 	
-#Manage if it's a DNG argument, reused or not. Also, create FILE and TMP.
+#DNG argument, reused or not. Also, create FILE and TMP.
 	DEVELOP=true
 	if [[ ( -d $ARG ) && ( ( `basename ${ARG} | cut -c1-3` == "dng" && -f "${ARG}/../settings.txt" ) || ( `basename ${ARG}` == $TRUNC_ARG && -f "${ARG}/settings.txt" ) ) ]]; then #If we're reusing a dng sequence, copy over before we delete the original.
 		echo -e "\e[1m${TRUNC_ARG}:\e[0m Moving DNGs from previous run...\n" #Use prespecified DNG sequence.
@@ -1445,7 +1482,7 @@ for ARG in "${FILE_ARGS_ITER[@]}"; do #Go through FILE_ARGS_ITER array, copied f
 		
 	dcrawOpt() { #Find, develop, and splay raw DNG data as ppm, ready to be processed.
 		find "${TMP}" -maxdepth 1 -iname "*.dng" -print0 | sort -z | tr -d "\n" | xargs -0 \
-			dcraw -c -q $DEMO_MODE $FOUR_COLOR -k $BLACK_LEVEL $SATPOINT $BADPIXELS $WHITE -H $HIGHLIGHT_MODE -g $GAMMA $NOISE_REDUC -o $SPACE $DEPTH
+			dcraw -c -q $DEMO_MODE $FOUR_COLOR -k $BLACK_LEVEL $SATPOINT $BADPIXELS $WHITE -H $HIGHLIGHT_MODE -g $GAMMA $WAVE_NOISE -o $SPACE $DEPTH
 	} #Is prepared to pipe all the files in TMP outwards.
 	
 	dcrawImg() { #Find and splay image sequence data as ppm, ready to be processed by ffmpeg.
@@ -1454,12 +1491,12 @@ for ARG in "${FILE_ARGS_ITER[@]}"; do #Go through FILE_ARGS_ITER array, copied f
 	
 	mov_main() {
 		ffmpeg -f image2pipe -vcodec ppm -r $FPS -i pipe:0 \
-			-loglevel panic -stats $SOUND -vcodec prores_ks -n -r $FPS -profile:v 4444 -alpha_bits 0 -vendor ap4h $LUT $SOUND_ACTION "${VID}_hq.mov"
+			-loglevel panic -stats $SOUND -vcodec prores_ks -n -r $FPS -profile:v 4444 -alpha_bits 0 -vendor ap4h $V_FILTERS $SOUND_ACTION "${VID}_hq.mov"
 	} #-loglevel panic -stats
 	
 	mov_prox() {
 		ffmpeg -f image2pipe -vcodec ppm -r $FPS -i pipe:0 \
-			-loglevel panic -stats $SOUND -c:v libx264 -n -r $FPS -preset fast -vf "scale=trunc(iw/2)*${SCALE}:trunc(ih/2)*${SCALE}" -crf 23 $LUT -c:a mp3 "${VID}_lq.mp4"
+			-loglevel panic -stats $SOUND -c:v libx264 -n -r $FPS -preset fast $V_FILTERS_PROX -crf 23 -c:a mp3 "${VID}_lq.mp4"
 	} #The option -vf "scale=trunc(iw/2)*2:trunc(ih/2)*2" fixes when x264 is unhappy about non-2 divisible dimensions.
 	
 	runSim() {
@@ -1485,19 +1522,19 @@ for ARG in "${FILE_ARGS_ITER[@]}"; do #Go through FILE_ARGS_ITER array, copied f
 		#~ cat $PIPE | tr 'e' 'a' & echo 'hello' | tee $PIPE | tr 'e' 'o' #The magic of simultaneous execution ^_^
 	}
 	
-	img_par() { #Takes 20 arguments: {} 2$DEMO_MODE 3$FOUR_COLOR 4$BADPIXELS 5$WHITE 6$HIGHLIGHT_MODE 7$GAMMA 8$NOISE_REDUC 9$DEPTH 10$SEQ 11$TRUNC_ARG 12$IMG_FMT 13$FRAME_END 14$DEPTH_OUT 15$COMPRESS 16$isJPG 17$PROXY_SCALE 18$PROXY 19$BLACK_LEVEL 20$SPACE 21$SATPOINT
+	img_par() { #Takes 20 arguments: {} 2$DEMO_MODE 3$FOUR_COLOR 4$BADPIXELS 5$WHITE 6$HIGHLIGHT_MODE 7$GAMMA 8$WAVE_NOISE 9$DEPTH 10$SEQ 11$TRUNC_ARG 12$IMG_FMT 13$FRAME_END 14$DEPTH_OUT 15$COMPRESS 16$isJPG 17$PROXY_SCALE 18$PROXY 19$BLACK_LEVEL 20$SPACE 21$SATPOINT
 		count=$(echo $(echo $1 | rev | cut -d "_" -f 1 | rev | cut -d "." -f 1 | grep "[0-9]") | bc) #Instead of count from file, count from name!
 		if [ ${16} == true ]; then
 			dcraw -c -q $2 $3 $4 $5 -H $6 -k ${19} ${21} -g $7 $8 -o ${20} $9 $1 | \
-				tee >(convert ${14} - ${15} $(printf "${10}/${11}_%06d.${12}" ${count})) | \
-					convert - -quality 90 -resize ${17} $(printf "${18}/${11}_%06d.jpg" ${count})
+				tee >(convert ${14} - ${15} -set colorspace RGB -set colorspace RGB $(printf "${10}/${11}_%06d.${12}" ${count})) | \
+					convert - -quality 90 -set colorspace RGB -resize ${17} -set colorspace RGB $(printf "${18}/${11}_%06d.jpg" ${count})
 			echo -e "\e[2K\rDNG to ${12^^}/JPG: Frame ${count^^}/${13}\c"
 		else
 			dcraw -c -q $2 $3 $4 $5 -H $6 -k ${19} ${21} -g $7 $8 -o ${20} $9 $1 | \
-				convert ${14} - ${15} $(printf "${10}/${11}_%06d.${12}" ${count})
+				convert ${14} - ${15} -set colorspace RGB -set colorspace sRGB $(printf "${10}/${11}_%06d.${12}" ${count})
 			echo -e "\e[2K\rDNG to ${12^^}: Frame ${count^^}/${13}\c"
 		fi
-	}
+	} #-p /home/sofus/subhome/src/convmlv/care-package/linear_rgb.icc
 	
 	export -f img_par
 	
@@ -1533,9 +1570,9 @@ for ARG in "${FILE_ARGS_ITER[@]}"; do #Go through FILE_ARGS_ITER array, copied f
 
 #Convert all the actual DNGs to IMG_FMT, in parallel.
 		find "${TMP}" -maxdepth 1 -name '*.dng' -print0 | sort -z | xargs -0 -I {} -P $THREADS -n 1 \
-			bash -c "img_par '{}' '$DEMO_MODE' '$FOUR_COLOR' '$BADPIXELS' '$WHITE' '$HIGHLIGHT_MODE' '$GAMMA' '$NOISE_REDUC' '$DEPTH' \
+			bash -c "img_par '{}' '$DEMO_MODE' '$FOUR_COLOR' '$BADPIXELS' '$WHITE' '$HIGHLIGHT_MODE' '$GAMMA' '$WAVE_NOISE' '$DEPTH' \
 			'$SEQ' '$TRUNC_ARG' '$IMG_FMT' '$FRAME_END' '$DEPTH_OUT' '$COMPRESS' '$isJPG' '$PROXY_SCALE' '$PROXY' '$BLACK_LEVEL' '$SPACE' '$SATPOINT'"
-					
+		
 		# Removed  | cut -d '' -f $FRAME_RANGE , as this happens when creating the DNGs in the first place.
 
 		if [ $isJPG == true ]; then #Make it print "Frame $FRAMES / $FRAMES" as the last output :).
@@ -1546,25 +1583,49 @@ for ARG in "${FILE_ARGS_ITER[@]}"; do #Go through FILE_ARGS_ITER array, copied f
 		
 		echo -e "\n"
 		
-#Apply a LUT to non-EXR images.
-		if [ $isLUT == true ]; then #Some way to package this into the development itself without piping hell?
-			if [ $IMG_FMT == "exr" ]; then
-				echo -e "*Cannot apply LUT to EXR sequences."
-			else
-				echo -e "\e[1m${TRUNC_ARG}:\e[0m Applying LUT to ${FRAMES} ${IMG_FMT^^}s...\n"
-				
-				lutLoc="${TMP}/lut_conv"
-				mkdirS $lutLoc
-				
-				find $SEQ -name "*.${IMG_FMT}" -print0 | cut -d '' -f $FRAME_RANGE | tr -d "\n" | xargs -0 -I '{}' mv {} "${lutLoc}"
-				ffmpeg -f image2 -i "${lutLoc}/${TRUNC_ARG}_%06d.${IMG_FMT}" -loglevel panic -stats -vf $LUT "${SEQ}/${TRUNC_ARG}_%06d.${IMG_FMT}"
+#FFMPEG Filter Application: Temporal Denoising, 3D LUTs so far. See construction of $V_FILTERS in PREPARATION.
+		if [[ $FFMPEG_FILTERS == true ]]; then
+			tmpFiltered=${TMP}/filtered
+			mkdir $tmpFiltered
+			
+			#Give correct output.
+			if [[ $isTemp == true && $isLUT == true ]]; then
+				echo -e "\e[1m${TRUNC_ARG}:\e[0m Temporal Denoising and LUT Application...\n"
+			elif [[ $isTemp == false && $isLUT == true ]]; then
+				echo -e "\e[1m${TRUNC_ARG}:\e[0m LUT Application...\n"
+			elif [[ $isTemp == true && $isLUT == false ]]; then
+				echo -e "\e[1m${TRUNC_ARG}:\e[0m Temporal Denoising...\n"
 			fi
+			
+			if [ $IMG_FMT == "exr" ]; then
+				echo -e "Note: EXRs may hang after filtering.\n"
+				
+				img_res=$(identify ${SEQ}/${TRUNC_ARG}_$(printf "%06d" $(echo "$FRAME_START" | bc)).${IMG_FMT} | cut -d$' ' -f3)
+				
+				convert -set colorspace RGB -define stream:buffer-size=0 -set colorspace RGB "${SEQ}/${TRUNC_ARG}_%06d.exr[${FRAME_START}-${FRAME_END}]" ppm:- | \
+					ffmpeg -f image2pipe -vcodec ppm -s "${img_res}" -r $FPS -loglevel panic -stats -i pipe:0 \
+					$V_FILTERS \
+					-vcodec ppm -n -r $FPS -f image2pipe pipe:1 | \
+						convert -depth 16 - -set colorspace RGB -compress piz -set colorspace RGB "${tmpFiltered}/%06d.${IMG_FMT}" #Watch colorspace.
+			else
+				ffmpeg -start_number $FRAME_START -f image2 -i "${SEQ}/${TRUNC_ARG}_%06d.${IMG_FMT}" -loglevel panic -stats $V_FILTERS "${tmpFiltered}/%06d.${IMG_FMT}"
+			fi
+			echo ""
+			
+			#Replace the images in $SEQ with the filtered ones.
+			i=$FRAME_START
+			for img in $tmpFiltered/*.${IMG_FMT}; do
+				repl=$(printf "${SEQ}/${TRUNC_ARG}_%06d.${IMG_FMT}" $i)
+				
+				mv $img $repl
+				
+				((i+=1))
+			done
 		fi
 	fi
 	
 #MOVIE PROCESSING
 	VID="${FILE}/${TRUNC_ARG}"
-	SCALE=`echo "($(echo "${PROXY_SCALE}" | sed 's/%//') / 100) * 2" | bc -l` #Get scale as factor for halved video, *2 for 50%
 	
 	SOUND="-i ${TMP}/${TRUNC_ARG}_.wav"
 	SOUND_ACTION="-c:a mp3"
@@ -1574,16 +1635,17 @@ for ARG in "${FILE_ARGS_ITER[@]}"; do #Go through FILE_ARGS_ITER array, copied f
 	fi
 	
 	if [ $MOVIE == true ] && [ $IMAGES == false ]; then
-		#LUT is automatically applied if argument was passed.
 		if [ $isH264 == true ]; then
 			echo -e "\e[1m${TRUNC_ARG}:\e[0m Encoding to ProRes/H.264..."
 			runSim dcrawOpt mov_main mov_prox
 		else
 			echo -e "\e[1m${TRUNC_ARG}:\e[0m Encoding to ProRes..."
 			dcrawOpt | mov_main
-			exit
 		fi
+		echo ""
 	elif [ $MOVIE == true ] && [ $IMAGES == true ]; then #Use images if available, as opposed to developing the files again.
+		V_FILTERS="" #We don't need this any more for this run - already applied to the images.
+		V_FILTERS_PROX="-vf $FINAL_SCALE"
 		if [ $isH264 == true ]; then
 			echo -e "\e[1m${TRUNC_ARG}:\e[0m Encoding to ProRes/H.264..."
 			runSim dcrawImg mov_main mov_prox
@@ -1591,15 +1653,18 @@ for ARG in "${FILE_ARGS_ITER[@]}"; do #Go through FILE_ARGS_ITER array, copied f
 			echo -e "\e[1m${TRUNC_ARG}:\e[0m Encoding to ProRes..."
 			dcrawImg | mov_main
 		fi
+		echo ""
 	fi
 	
 	if [ $MOVIE == false ] && [ $isH264 == true ]; then
 		echo -e "\e[1m${TRUNC_ARG}:\e[0m Encoding to H.264..."
 		if [ $IMAGES == true ]; then
+			V_FILTERS_PROX="-vf $FINAL_SCALE" #See above note.
 			dcrawImg | mov_prox
 		else
 			dcrawOpt | mov_prox
 		fi
+		echo ""
 	fi
 	
 #Potentially move DNGs.

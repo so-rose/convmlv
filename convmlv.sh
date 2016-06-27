@@ -3,13 +3,14 @@
 #TODO:
 #~ Stats for .RAW files.
 #~ Integrate anti-vertical banding. May require being able to use multiple darkframe files.
-#~ Atadenoise integration.
 
 #~ Better Preview:
 #~ --> A different module (like -e) for live viewing of footage, under convmlv settings. Danne is working on this :).
 
 #BUG: Relative OUTDIR makes baxpixel generation fail if ./mlv2badpixels.sh doesn't exist. Fixed on Linux only.
-#BUG: Colorspace Bug Affecting all but EXR output.
+#CONCERN: Weirdness with color spaces in general. No impact to user; just some weirdly placed sRGB conversions if'ed by DPX.
+#~ --> See Nasty Hacks Part 1 - 3. FML :O.
+#~ I'll feel better about this after quite a while
 
 
 #~ The MIT License (MIT)
@@ -35,7 +36,7 @@
 #~ SOFTWARE.
 
 #BASIC VARS
-VERSION="1.9.2" #Version string.
+VERSION="1.9.3" #Version string.
 INPUT_ARGS=$(echo "$@") #The original input argument string.
 
 if [[ $OSTYPE == "linux-gnu" ]]; then
@@ -130,23 +131,29 @@ setDefaults() { #Set all the default variables. Run here, and also after each AR
 #FFMPEG Filters
 	FFMPEG_FILTERS=false #Whether or not FFMPEG filters are going to be used.
 	TEMP_NOISE="" #Temporal noise reduction.
-	isTemp=false
+	tempDesc=""
 	LUT=""
-	isLUT=false
+	lutDesc=""
+	DESHAKE=""
+	deshakeDesc=""
+	HQ_NOISE="" #hqdn3d noise reduction.
+	hqDesc=""
 }
 
 setDefaults #Run now, but also later.
 
 help() {
-less -R << EOF
+less -R << EOF 
 Usage:
 	$(echo -e "\033[1m./convmlv.sh\033[0m [FLAGS] [OPTIONS] \033[2mfiles\033[0m")
 	
 INFO:
 	A script allowing you to develop ML files into workable formats. Many useful options are exposed.
-	  -->Image Defaults: Compressed 16-bit Linear EXR.
-	  -->Acceptable Inputs: MLV, RAW, DNG Folder.
-	  -->Option Input: From command line or config file.
+	  --> Image Defaults: Compressed 16-bit Linear EXR.
+	  --> Acceptable Inputs: MLV, RAW, DNG Folder.
+	  --> Option Input: From command line or config file.
+	  
+	  --> Forum Post: http://www.magiclantern.fm/forum/index.php?topic=16799.
 	
 $(echo -e "VERSION: ${VERSION}")
 	
@@ -227,6 +234,14 @@ OPTIONS, RAW DEVELOPMENT:
 	-N <A>-<B>		TEMP_NOISE - Apply temporal denoising.
 	  --> A: 0 to 0.3. B: 0 to 5. A reacts to abrupt noise (splotches), B reacts to noise over time (fast motion causes artifacts).
 	  --> Subtle: 0.03-0.04. High: 0.15-0.04. High, Predictable Motion: 0.15-0.07
+	  
+	-Q [i-i:i-i]		HQ_NOISE - Apply 3D denoising filter.
+	  --> In depth explanation: https://mattgadient.com/2013/06/29/in-depth-look-at-de-noising-in-handbrake-with-imagevideo-examples/ .
+	  --> Spacial/Temporal (S/T). S will soften/blur/smooth, T will remove noise without doing that but may create artifacts.
+	  --> Luma/Chroma (L/C). L is the detail, C is the color. Each one's denoising may be manipulated Spacially or Temporally.
+	  
+	  --> Options: <LS>-<CS>:<LT>-<CT>
+	  --> Weak: 2-1:2-3. Medium: 3-2:2-3. Strong: 7-7:5-5
 	
 	-g [0:4]		SPACE - Output color transformation.
 	  --> 0: Linear. 1: 2.2 (Adobe RGB). 2: 1.8 (ProPhoto RGB). 3: sRGB. 4: BT.709.
@@ -241,7 +256,7 @@ OPTIONS, COLOR:
 	-l <path>		LUT - Specify a LUT to apply.
 	  --> Supports cube, 3dl, dat, m3d.
 	  
-	-S [int]		SATPOINT - Specify the 14-bit saturation point of your camera.
+	-S [int]		SATPOINT - Specify the 14-bit saturation point of your camera. You don't usually want to.
 	  --> Lower if -H1 yields purple highlights. Must be correct for highlight reconstruction.
 	  --> Determine using the max value of 'dcraw -D -j -4 -T'
 	
@@ -251,6 +266,9 @@ OPTIONS, COLOR:
 	
 	
 OPTIONS, FEATURES:
+	-D			DESHAKE - Stabilize the video using the wonderful ffmpeg "deshake" module.
+	--> You'll probably wish to crop/scale the output in editing, to avoid edge artifacts.
+	
 	-u			DUAL_ISO - Process as dual ISO.
 	
 	-b			BADPIXELS - Fix focus pixels issue using dfort's script.
@@ -263,7 +281,8 @@ OPTIONS, FEATURES:
 	  --> If the file extension is '.darkframe', the file will be used as the preaveraged dark frame.
 	
 	-R <path>		dark_out - Specify to create a .darkframe file from passed in MLV.
-	 --> Outputs <arg>.darkframe file to <path>.
+	 --> Usage: 'convmlv -R <path> <input>.MLV'
+	 --> Averages <input>.MLV to create <path>.darkframe.
 	 --> THE .darkframe EXTENSION IS ADDED FOR YOU.
 	
 	
@@ -280,38 +299,47 @@ OPTIONS, INFO:
 	  --> There's no automatic way to install these. See http://www.magiclantern.fm/forum/index.php?topic=16799.0 .
 	
 CONFIG FILE:
-	You do not need to type in all the arguments each time: Config files, another way to specify options, can save you time & lend
-	you convenience in production situations.
+	Config files, another way to specify options, can save you time & lend you convenience in production situations.
 	
-	GLOBAL: $HOME/convmlv.conf
-	LOCAL: Specify -C/--config.
-
-	Some options have an uppercased VARNAME, ex. OUTDIR. In a convmlv config file, you can specify this option
-	in the following format, line by line:
-		<VARNAME> <VALUE>
+	$(echo -e "\e[1mGLOBAL\e[0m"): $HOME/convmlv.conf
+	$(echo -e "\e[1mLOCAL\e[0m"): Specify -C/--config.
+	
+	
+	$(echo -e "\e[1mSYNTAX:\e[0m")
+		Most options listed above have an uppercased VARNAME, ex. OUTDIR. Yu can specify such options in config files, as such:
 		
-	If the value is a true/false flag, simply specifying VARNAME is enough. Otherwise, normal rules for the value applies.
+			<VARNAME> <VALUE>
+			
+		One option per line only. Indentation by tabs or spaces is allowed, but not enforced.
+			
+		$(echo -e "\e[1mComments\e[0m") Lines starting with # are comments.
+		
+		You may name a config using:
+		
+			CONFIG_NAME <name>
+			
+		$(echo -e "\e[1mFlags\e[0m") If the value is a true/false flag (ex. IMAGE), simply specifying VARNAME is enough. THere is no VALUE.
 	
-	Options override each other as such:
-	-LOCAL overrides GLOBAL config.
-	-Passed arguments override both configs.
-	-Lines starting with # are comments.
-	-Name a config using the VARNAME: CONFIG_NAME <name>
+	$(echo -e "\e[1mOPTION ORDER OF PRECEDENCE\e[0m") Options override each other as such:
+		-LOCAL options overwrite GLOBAL options.
+		-COMMAND LINE options overwrite LOCAL & GLOBAL options.
+		-FILE SPECIFIC options overwrite ALL ABOVE options.
 	
 	
-	File-Specific Block: A LOCAL config file lets you specify options for specific input names:
+	$(echo -e "\e[1mFile-Specific Block\e[0m"): A LOCAL config file lets you specify options for specific input names:
+	
 		/ <TRUNCATED INPUTNAME>
-			...specify options
+			...options here will only be 
 		*
 		
-	$(echo -e "\e[1mFile-Specific Blocks override all other options.\e[0m") This allows one to create
-	a single config file to batch-develop several input files/folders at once, after deciding how each one should
-	look/be configured individually.
-	
-	Notes on Usage:
-	-You must use the truncated (no .mlv or .raw) input name after the /.
-	-No nested blocks.
-	-Indentation by tabs or spaces is allowed, but not enforced.
+		You must use the truncated (no .mlv or .raw) input name after the /. Nested blocks will fail.
+		
+		With a single config file, you can control the development options of multiple inputs as specifically and/or generically
+		as you want. Batch developing everything can then be done with a single, powerful commmand.
+		
+
+
+Contact me with any feedback or questions at convmlv@sofusrose.com, or PM me (so-rose) on the ML forums!
 EOF
 }
 
@@ -456,7 +484,22 @@ evalConf() {
 					bVal=$(echo "${vals}" | cut -d"-" -f2)
 					
 					TEMP_NOISE="atadenoise=0a=${aVal}:0b=${bVal}:1a=${aVal}:1b=${bVal}:2a=${aVal}:2b=${bVal}"
-					isTemp=true
+					tempDesc="Temporal Denoiser"
+					FFMPEG_FILTERS=true
+				;;
+				"HQ_NOISE")
+					vals="$(echo "${line}" | cut -d$' ' -f2)"
+					
+					S=`echo "${vals}" | cut -d$':' -f1`
+					T=`echo "${vals}" | cut -d$':' -f2`
+					
+					LS=`echo "${S}" | cut -d$'-' -f1`
+					CS=`echo "${S}" | cut -d$'-' -f2`
+					LT=`echo "${T}" | cut -d$'-' -f1`
+					CT=`echo "${T}" | cut -d$'-' -f2`
+					
+					HQ_NOISE="hqdn3d=luma_spatial=${LS}:chroma_spatial=${CS}:luma_tmp=${LT}:chroma_tmp=${CT}"
+					hqDesc="3D Denoiser"
 					FFMPEG_FILTERS=true
 				;;
 				"SPACE") 
@@ -507,7 +550,7 @@ evalConf() {
 					fi
 					
 					LUT="lut3d=${LUT_PATH}"
-					isLUT=true
+					lutDesc="3D LUT"
 					FFMPEG_FILTERS=true
 				;;
 				"SATPOINT") SATPOINT="-S $(echo "${line}" | cut -d$' ' -f2)"
@@ -518,6 +561,11 @@ evalConf() {
 				;;
 				
 				
+				"DESHAKE")
+					DESHAKE="deshake"
+					deshakeDesc="Deshake Filter"
+					FFMPEG_FILTERS=true
+				;;
 				"DUAL_ISO") DUAL_ISO=true
 				;;
 				"BADPIXELS") isBP=true
@@ -535,7 +583,7 @@ parseArgs() { #Amazing new argument parsing!!!
 	longArg() { #Creates VAL
 		ret="${!OPTIND}"; OPTIND=$(( $OPTIND + 1 ))
 	}
-	while getopts "vh C: o:P: T:  i t: m p: s: k r:  d: f H: c: n: N: g:  w: l: S:  u b a: F: R:  q K Y M    -:" opt; do
+	while getopts "vh C: o:P: T:  i t: m p: s: k r:  d: f H: c: n: N: Q: g:  w: l: S:  D u b a: F: R:  q K Y M    -:" opt; do
 		#~ echo $opt ${OPTARG}
 		case "$opt" in
 			-) #Long Arguments
@@ -721,7 +769,22 @@ parseArgs() { #Amazing new argument parsing!!!
 				bVal=$(echo "${vals}" | cut -d"-" -f2)
 				
 				TEMP_NOISE="atadenoise=0a=${aVal}:0b=${bVal}:1a=${aVal}:1b=${bVal}:2a=${aVal}:2b=${bVal}"
-				isTemp=true
+				tempDesc="Temporal Denoiser"
+				FFMPEG_FILTERS=true
+				;;
+			Q)
+				vals=${OPTARG}
+				
+				S=`echo "${vals}" | cut -d$':' -f1`
+				T=`echo "${vals}" | cut -d$':' -f2`
+				
+				LS=`echo "${S}" | cut -d$'-' -f1`
+				CS=`echo "${S}" | cut -d$'-' -f2`
+				LT=`echo "${T}" | cut -d$'-' -f1`
+				CT=`echo "${T}" | cut -d$'-' -f2`
+				
+				HQ_NOISE="hqdn3d=luma_spatial=${LS}:chroma_spatial=${CS}:luma_tmp=${LT}:chroma_tmp=${CT}"
+				hqDesc="3D Denoiser"
 				FFMPEG_FILTERS=true
 				;;
 			g)
@@ -770,12 +833,19 @@ parseArgs() { #Amazing new argument parsing!!!
 					exit 1
 				fi
 				LUT="lut3d=${LUT_PATH}"
-				isLUT=true
+				lutDesc="3D LUT"
+				FFMPEG_FILTERS=true
 				;;
 			S)
 				SATPOINT="-S ${OPTARG}"
 				;;
 			
+			
+			D)
+				DESHAKE="deshake"
+				deshakeDesc="Deshake Filter"
+				FFMPEG_FILTERS=true
+				;;
 			
 			u)
 				DUAL_ISO=true
@@ -1014,13 +1084,18 @@ for ARG in "${FILE_ARGS_ITER[@]}"; do #Go through FILE_ARGS_ITER array, copied f
 	SCALE=`echo "($(echo "${PROXY_SCALE}" | sed 's/%//') / 100) * 2" | bc -l` #Get scale as factor for halved video, *2 for 50%
 	setBL=true
 	
-	joinArgs() { local IFS="$1"; shift; echo "$*"; }
+	joinArgs() { local d=$1; shift; echo -n "$1"; shift; printf "%s" "${@/#/$d}"; }
 			
 	#Construct the FFMPEG filters.
-	FINAL_SCALE="scale=trunc(iw/2)*${SCALE}:trunc(ih/2)*${SCALE}"
-	V_FILTERS="-vf $(joinArgs , ${TEMP_NOISE} ${LUT})"
-	V_FILTERS_PROX="-vf $(joinArgs , ${TEMP_NOISE} ${LUT} ${proxy_scale})" #Proxy filters add the scale component.
-	
+	if [[ $FFMPEG_FILTERS == true ]]; then
+		FINAL_SCALE="scale=trunc(iw/2)*${SCALE}:trunc(ih/2)*${SCALE}"
+		V_FILTERS="-vf $(joinArgs , ${DESHAKE} ${TEMP_NOISE} ${HQ_NOISE} ${LUT})"
+		V_FILTERS_PROX="-vf $(joinArgs , ${DESHAKE} ${TEMP_NOISE} ${HQ_NOISE} ${LUT} ${FINAL_SCALE})" #Proxy filter set adds the scale component.
+		
+		#Created formatted array of filters, FILTER_ARR.
+		declare -a compFilters=("${tempDesc}" "${lutDesc}" "${deshakeDesc}" "${hqDesc}")
+		for v in "${compFilters[@]}"; do if test "$v"; then FILTER_ARR+=("$v"); fi; done
+	fi
 #Evaluate convmlv.conf configuration file for file-specific blocks.
 	evalConf "$LCONFIG" true
 #Check that things exist.
@@ -1268,9 +1343,8 @@ for ARG in "${FILE_ARGS_ITER[@]}"; do #Go through FILE_ARGS_ITER array, copied f
 					done
 					
 				} #Progress Bar
-				
 				if [[ $firstFrame == true ]]; then #If 0-0.
-					rm $(printf "${tmpOut}/${9}_%06d.dng" 1) #Remove frame #1, leaving us only with frame #0.
+					rm $(printf "${tmpOut}/${9}_%06d.dng" 1) 2>/dev/null #Remove frame #1, leaving us only with frame #0.
 					mv $tmpOut "${7}/0-0" #Move back to 0-0, as if that's how it was developed all along.
 				fi
 			}
@@ -1284,7 +1358,7 @@ for ARG in "${FILE_ARGS_ITER[@]}"; do #Go through FILE_ARGS_ITER array, copied f
 			#Since devDNG must run in a subshell, globals don't follow. Must pass *everything* in.
 			echo -e "\e[2K\rMLV to DNG: Frame ${FRAME_END}/${FRAME_END}\c" #Ensure it looks right at the end.
 			echo -e "\n"
-
+			
 			count=$FRAME_START
 			for range in "${fileRanges[@]}"; do #Go through the subfolders sequentially
 				tmpOut=${TMP}/${range} #Use temporary folder. It will be named the same as the frame range.
@@ -1295,7 +1369,7 @@ for ARG in "${FILE_ARGS_ITER[@]}"; do #Go through FILE_ARGS_ITER array, copied f
 				done
 				rm -r $tmpOut #Remove the now empty subfolder
 			done
-						
+			
 		elif [ $EXT == "RAW" ] || [ $EXT == "raw" ]; then
 			rawSet
 			echo -e $rawStat
@@ -1479,6 +1553,15 @@ for ARG in "${FILE_ARGS_ITER[@]}"; do #Go through FILE_ARGS_ITER array, copied f
 	fi
 	
 #DEFINE PROCESSING FUNCTIONS
+	
+	#Nasty Hack Part 1: Setting colorspace for dcrawImg must be done differently for non-exr formats to maintain linearity.
+	if [[ $IMG_FMT == "exr"  || $IMG_FMT == "dpx" ]]; then
+		NASTYHACK="RGB"
+	else
+		NASTYHACK="sRGB"
+	fi
+	#But even NASTYHACK is one Gamma 2.2 conversion above what it's supposed to be, even if the formats are now consistent.
+	#So, this is useless...
 		
 	dcrawOpt() { #Find, develop, and splay raw DNG data as ppm, ready to be processed.
 		find "${TMP}" -maxdepth 1 -iname "*.dng" -print0 | sort -z | tr -d "\n" | xargs -0 \
@@ -1486,8 +1569,8 @@ for ARG in "${FILE_ARGS_ITER[@]}"; do #Go through FILE_ARGS_ITER array, copied f
 	} #Is prepared to pipe all the files in TMP outwards.
 	
 	dcrawImg() { #Find and splay image sequence data as ppm, ready to be processed by ffmpeg.
-		find "${SEQ}" -maxdepth 1 -iname "*.${IMG_FMT}" -print0 | sort -z | xargs -0 -I {} convert '{}' ppm:-
-	} #Finds all images, prints to stdout quickly without any operations using convert.
+		find "${SEQ}" -maxdepth 1 -iname "*.${IMG_FMT}" -print0 | sort -z | xargs -0 -I {} convert '{}' -colorspace ${NASTYHACK} ppm:-
+	} #Finds all images, prints to stdout, without any operations, using convert. ppm conversion is inevitably slow, however...
 	
 	mov_main() {
 		ffmpeg -f image2pipe -vcodec ppm -r $FPS -i pipe:0 \
@@ -1524,19 +1607,32 @@ for ARG in "${FILE_ARGS_ITER[@]}"; do #Go through FILE_ARGS_ITER array, copied f
 	
 	img_par() { #Takes 20 arguments: {} 2$DEMO_MODE 3$FOUR_COLOR 4$BADPIXELS 5$WHITE 6$HIGHLIGHT_MODE 7$GAMMA 8$WAVE_NOISE 9$DEPTH 10$SEQ 11$TRUNC_ARG 12$IMG_FMT 13$FRAME_END 14$DEPTH_OUT 15$COMPRESS 16$isJPG 17$PROXY_SCALE 18$PROXY 19$BLACK_LEVEL 20$SPACE 21$SATPOINT
 		count=$(echo $(echo $1 | rev | cut -d "_" -f 1 | rev | cut -d "." -f 1 | grep "[0-9]") | bc) #Instead of count from file, count from name!
+		
+		if [[ ${12} == "dpx" ]]; then NASTYHACK2="-colorspace sRGB"; else NASTYHACK2=""; fi #Nasty Hack, Part 2: IM applies an inverse sRGB curve on DPX, for some reason.
+			#Trust me, I've tried everything else; but this seems to actually work, so. Bug fixed, I guess...
+			
 		if [ ${16} == true ]; then
 			dcraw -c -q $2 $3 $4 $5 -H $6 -k ${19} ${21} -g $7 $8 -o ${20} $9 $1 | \
-				tee >(convert ${14} - ${15} -set colorspace RGB -set colorspace RGB $(printf "${10}/${11}_%06d.${12}" ${count})) | \
-					convert - -quality 90 -set colorspace RGB -resize ${17} -set colorspace RGB $(printf "${18}/${11}_%06d.jpg" ${count})
+				tee >(convert ${14} - -set colorspace RGB ${15} $(printf "${10}/${11}_%06d.${12}" ${count})) | \
+					convert - -set colorspace RGB -quality 80 -set colorspace sRGB -resize ${17} $(printf "${18}/${11}_%06d.jpg" ${count})
+					#See below, in compression, formats for info on why I'm setting sRGB colorspace for a linear output...
 			echo -e "\e[2K\rDNG to ${12^^}/JPG: Frame ${count^^}/${13}\c"
 		else
 			dcraw -c -q $2 $3 $4 $5 -H $6 -k ${19} ${21} -g $7 $8 -o ${20} $9 $1 | \
-				convert ${14} - ${15} -set colorspace RGB -set colorspace sRGB $(printf "${10}/${11}_%06d.${12}" ${count})
+				convert ${14} - -set colorspace RGB ${NASTYHACK2} ${15} $(printf "${10}/${11}_%06d.${12}" ${count})
 			echo -e "\e[2K\rDNG to ${12^^}: Frame ${count^^}/${13}\c"
 		fi
-	} #-p /home/sofus/subhome/src/convmlv/care-package/linear_rgb.icc
+	}
 	
-	export -f img_par
+	#~ For XYZ->sRGB Input (Requires XYZ Identity ICC Profile):
+	#~ convert ${14} -  +profile icm -profile "/home/sofus/subhome/src/convmlv/icc/XYZ-D50-Identity-elle-V4.icc" -set colorspace XYZ \
+				#~ -color-matrix "3.2404542 -1.5371385 -0.4985314 \
+                  #~ -0.9692660  1.8760108  0.0415560 \
+                   #~ 0.0556434 -0.2040259  1.0572252" \
+				#~ -set colorspace RGB ${15} $(printf "${10}/${11}_%06d.${12}" ${count})
+		#~ See http://www.imagemagick.org/discourse-server/viewtopic.php?t=21161
+	
+	export -f img_par	
 	
 	
 #PROCESSING
@@ -1583,30 +1679,25 @@ for ARG in "${FILE_ARGS_ITER[@]}"; do #Go through FILE_ARGS_ITER array, copied f
 		
 		echo -e "\n"
 		
-#FFMPEG Filter Application: Temporal Denoising, 3D LUTs so far. See construction of $V_FILTERS in PREPARATION.
+#FFMPEG Filter Application: Temporal Denoising, 3D LUTs, Deshake, hqdn Denoising so far. See construction of $V_FILTERS in PREPARATION.
 		if [[ $FFMPEG_FILTERS == true ]]; then
 			tmpFiltered=${TMP}/filtered
 			mkdir $tmpFiltered
 			
 			#Give correct output.
-			if [[ $isTemp == true && $isLUT == true ]]; then
-				echo -e "\e[1m${TRUNC_ARG}:\e[0m Temporal Denoising and LUT Application...\n"
-			elif [[ $isTemp == false && $isLUT == true ]]; then
-				echo -e "\e[1m${TRUNC_ARG}:\e[0m LUT Application...\n"
-			elif [[ $isTemp == true && $isLUT == false ]]; then
-				echo -e "\e[1m${TRUNC_ARG}:\e[0m Temporal Denoising...\n"
-			fi
+			echo -e "\e[1mApplying Filters:\e[0m $(joinArgs ", " "${FILTER_ARR[@]}")...\n"
 			
 			if [ $IMG_FMT == "exr" ]; then
 				echo -e "Note: EXRs may hang after filtering.\n"
 				
 				img_res=$(identify ${SEQ}/${TRUNC_ARG}_$(printf "%06d" $(echo "$FRAME_START" | bc)).${IMG_FMT} | cut -d$' ' -f3)
 				
-				convert -set colorspace RGB -define stream:buffer-size=0 -set colorspace RGB "${SEQ}/${TRUNC_ARG}_%06d.exr[${FRAME_START}-${FRAME_END}]" ppm:- | \
+				convert "${SEQ}/${TRUNC_ARG}_%06d.exr[${FRAME_START}-${FRAME_END}]" -define stream:buffer-size=0 -set colorspace RGB  ppm:- | \
 					ffmpeg -f image2pipe -vcodec ppm -s "${img_res}" -r $FPS -loglevel panic -stats -i pipe:0 \
 					$V_FILTERS \
 					-vcodec ppm -n -r $FPS -f image2pipe pipe:1 | \
-						convert -depth 16 - -set colorspace RGB -compress piz -set colorspace RGB "${tmpFiltered}/%06d.${IMG_FMT}" #Watch colorspace.
+						convert -depth 16 - -colorspace RGB -compress piz -set colorspace RGB "${tmpFiltered}/%06d.${IMG_FMT}"
+						#For some reason, this whole process sends EXR's into sRGB. That's why -colorspace RGB is specified. See Nasty Hacks.
 			else
 				ffmpeg -start_number $FRAME_START -f image2 -i "${SEQ}/${TRUNC_ARG}_%06d.${IMG_FMT}" -loglevel panic -stats $V_FILTERS "${tmpFiltered}/%06d.${IMG_FMT}"
 			fi
@@ -1648,10 +1739,10 @@ for ARG in "${FILE_ARGS_ITER[@]}"; do #Go through FILE_ARGS_ITER array, copied f
 		V_FILTERS_PROX="-vf $FINAL_SCALE"
 		if [ $isH264 == true ]; then
 			echo -e "\e[1m${TRUNC_ARG}:\e[0m Encoding to ProRes/H.264..."
-			runSim dcrawImg mov_main mov_prox
+			runSim dcrawOpt mov_main mov_prox #Used to run dcrawImg
 		else
 			echo -e "\e[1m${TRUNC_ARG}:\e[0m Encoding to ProRes..."
-			dcrawImg | mov_main
+			dcrawOpt | mov_main #Used to run dcrawImg
 		fi
 		echo ""
 	fi
@@ -1660,11 +1751,13 @@ for ARG in "${FILE_ARGS_ITER[@]}"; do #Go through FILE_ARGS_ITER array, copied f
 		echo -e "\e[1m${TRUNC_ARG}:\e[0m Encoding to H.264..."
 		if [ $IMAGES == true ]; then
 			V_FILTERS_PROX="-vf $FINAL_SCALE" #See above note.
-			dcrawImg | mov_prox
+			dcrawOpt | mov_prox #Used to run dcrawImg
 		else
 			dcrawOpt | mov_prox
 		fi
 		echo ""
+		#Nasty Hack Part 3: We can no longer use dcrawImg; colorspace conversions are a fucking circus.
+		#Luckily, dcrawOpt isn't that much slower; even faster sometimes. Damn ppm conversion never pulled their weight.
 	fi
 	
 #Potentially move DNGs.

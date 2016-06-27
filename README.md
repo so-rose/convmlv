@@ -15,11 +15,13 @@ Usage:
 	
 INFO:
 	A script allowing you to develop ML files into workable formats. Many useful options are exposed.
-	  -->Image Defaults: Compressed 16-bit Linear EXR.
-	  -->Acceptable Inputs: MLV, RAW, DNG Folder.
-	  -->Option Input: From command line or config file.
+	  --> Image Defaults: Compressed 16-bit Linear EXR.
+	  --> Acceptable Inputs: MLV, RAW, DNG Folder.
+	  --> Option Input: From command line or config file.
+	  
+	  --> Forum Post: http://www.magiclantern.fm/forum/index.php?topic=16799.
 	
-VERSION: 1.9.2
+VERSION: 1.9.3
 	
 MANUAL DEPENDENCIES:
 	-mlv_dump: Required. http://www.magiclantern.fm/forum/index.php?topic=7122.0
@@ -98,6 +100,14 @@ OPTIONS, RAW DEVELOPMENT:
 	-N <A>-<B>		TEMP_NOISE - Apply temporal denoising.
 	  --> A: 0 to 0.3. B: 0 to 5. A reacts to abrupt noise (splotches), B reacts to noise over time (fast motion causes artifacts).
 	  --> Subtle: 0.03-0.04. High: 0.15-0.04. High, Predictable Motion: 0.15-0.07
+	  
+	-Q [i-i:i-i]		HQ_NOISE - Apply 3D denoising filter.
+	  --> In depth explanation: https://mattgadient.com/2013/06/29/in-depth-look-at-de-noising-in-handbrake-with-imagevideo-examples/ .
+	  --> Spacial/Temporal (S/T). S will soften/blur/smooth, T will remove noise without doing that but may create artifacts.
+	  --> Luma/Chroma (L/C). L is the detail, C is the color. Each one's denoising may be manipulated Spacially or Temporally.
+	  
+	  --> Options: <LS>-<CS>:<LT>-<CT>
+	  --> Weak: 2-1:2-3. Medium: 3-2:2-3. Strong: 7-7:5-5
 	
 	-g [0:4]		SPACE - Output color transformation.
 	  --> 0: Linear. 1: 2.2 (Adobe RGB). 2: 1.8 (ProPhoto RGB). 3: sRGB. 4: BT.709.
@@ -112,7 +122,7 @@ OPTIONS, COLOR:
 	-l <path>		LUT - Specify a LUT to apply.
 	  --> Supports cube, 3dl, dat, m3d.
 	  
-	-S [int]		SATPOINT - Specify the 14-bit saturation point of your camera.
+	-S [int]		SATPOINT - Specify the 14-bit saturation point of your camera. You don't usually want to.
 	  --> Lower if -H1 yields purple highlights. Must be correct for highlight reconstruction.
 	  --> Determine using the max value of 'dcraw -D -j -4 -T'
 	
@@ -122,6 +132,9 @@ OPTIONS, COLOR:
 	
 	
 OPTIONS, FEATURES:
+	-D			DESHAKE - Stabilize the video using the wonderful ffmpeg "deshake" module.
+	--> You'll probably wish to crop/scale the output in editing, to avoid edge artifacts.
+	
 	-u			DUAL_ISO - Process as dual ISO.
 	
 	-b			BADPIXELS - Fix focus pixels issue using dfort's script.
@@ -134,7 +147,8 @@ OPTIONS, FEATURES:
 	  --> If the file extension is '.darkframe', the file will be used as the preaveraged dark frame.
 	
 	-R <path>		dark_out - Specify to create a .darkframe file from passed in MLV.
-	 --> Outputs <arg>.darkframe file to <path>.
+	 --> Usage: 'convmlv -R <path> <input>.MLV'
+	 --> Averages <input>.MLV to create <path>.darkframe.
 	 --> THE .darkframe EXTENSION IS ADDED FOR YOU.
 	
 	
@@ -151,113 +165,45 @@ OPTIONS, INFO:
 	  --> There's no automatic way to install these. See http://www.magiclantern.fm/forum/index.php?topic=16799.0 .
 	
 CONFIG FILE:
-	You do not need to type in all the arguments each time: Config files, another way to specify options, can save you time & lend
-	you convenience in production situations.
+	Config files, another way to specify options, can save you time & lend you convenience in production situations.
 	
 	GLOBAL: /home/sofus/convmlv.conf
 	LOCAL: Specify -C/--config.
-
-	Some options have an uppercased VARNAME, ex. OUTDIR. In a convmlv config file, you can specify this option
-	in the following format, line by line:
-		<VARNAME> <VALUE>
-		
-	If the value is a true/false flag, simply specifying VARNAME is enough. Otherwise, normal rules for the value applies.
 	
-	Options override each other as such:
-	-LOCAL overrides GLOBAL config.
-	-Passed arguments override both configs.
-	-Lines starting with # are comments.
-	-Name a config using the VARNAME: CONFIG_NAME <name>
+	
+	SYNTAX:
+		Most options listed above have an uppercased VARNAME, ex. OUTDIR. Yu can specify such options in config files, as such:
+		
+			<VARNAME> <VALUE>
+			
+		One option per line only. Indentation by tabs or spaces is allowed, but not enforced.
+			
+		Comments Lines starting with # are comments.
+		
+		You may name a config using:
+		
+			CONFIG_NAME <name>
+			
+		Flags If the value is a true/false flag (ex. IMAGE), simply specifying VARNAME is enough. THere is no VALUE.
+	
+	OPTION ORDER OF PRECEDENCE Options override each other as such:
+		-LOCAL options overwrite GLOBAL options.
+		-COMMAND LINE options overwrite LOCAL & GLOBAL options.
+		-FILE SPECIFIC options overwrite ALL ABOVE options.
 	
 	
 	File-Specific Block: A LOCAL config file lets you specify options for specific input names:
+	
 		/ <TRUNCATED INPUTNAME>
-			...specify options
+			...options here will only be 
 		*
 		
-	File-Specific Blocks override all other options. This allows one to create
-	a single config file to batch-develop several input files/folders at once, after deciding how each one should
-	look/be configured individually.
-	
-	Notes on Usage:
-	-You must use the truncated (no .mlv or .raw) input name after the /.
-	-No nested blocks.
-	-Indentation by tabs or spaces is allowed, but not enforced.	-w [0:2]		WHITE - This is a modal white balance setting.
-	  --> 0: Auto WB. 1: Camera WB (default). 2: No Change.
-	  
-	-l <path>		LUT - Specify a LUT to apply.
-	  --> Supports cube, 3dl, dat, m3d.
-	  --> LUT cannot be applied to EXR sequences.
-	  
-	-S [int]		SATPOINT - Specify the 14-bit saturation point of your camera.
-	  --> Lower if -H1 yields purple highlights. Must be correct for highlight reconstruction.
-	  --> Determine using the max value of 'dcraw -D -j -4 -T'
-	
-	--white-speed [int]	WHITE_SPD - Samples used to calculate AWB
-	
-	--allow-white-clip	WHITE_CLIP - Let White Balance multipliers clip.
-	
-	
-OPTIONS, FEATURES:
-	-u			DUAL_ISO - Process as dual ISO.
-	
-	-b			BADPIXELS - Fix focus pixels issue using dfort's script.
-	
-	-a <path>		BADPIXEL_PATH - Use your own .badpixels file.
-	  --> How to: http://www.dl-c.com/board/viewtopic.php?f=4&t=686
-	
-	-F <path>		DARKFRAME - This is the path to a "dark frame MLV"; effective for noise reduction.
-	  --> How to: Record 5 sec w/lens cap on & same settings as footage. Pass MLV in here.
-	  --> If the file extension is '.darkframe', the file will be used as the preaveraged dark frame.
-	
-	-R <path>		dark_out - Specify to create a .darkframe file from passed in MLV.
-	 --> Outputs <arg>.darkframe file to <path>.
-	 --> THE .darkframe EXTENSION IS ADDED FOR YOU.
-	
-	
-OPTIONS, INFO:
-	-q			Output MLV settings.
-	
-	-K			Debian Package Deps - Output package dependecies.
-	  --> Install (Debian only): sudo apt-get install $ (./convmlv -K)
-	
-	-Y			Python Deps - Lists Python dependencies. Works directly with pip.
-	  -->Install (Linux): sudo pip3 install $ (./convmlv -Y)
-	
-	-N			Manual Deps - Lists manual dependencies, which must be downloaded by hand.
-	  --> There's no automatic way to install these. See http://www.magiclantern.fm/forum/index.php?topic=16799.0 .
-	
-CONFIG FILE:
-	You do not need to type in all the arguments each time: Config files, another way to specify options, can save you time & lend
-	you convenience in production situations.
-	
-	GLOBAL: /home/sofus/convmlv.conf
-	LOCAL: Specify -C/--config.
+		You must use the truncated (no .mlv or .raw) input name after the /. Nested blocks will fail.
+		
+		With a single config file, you can control the development options of multiple inputs as specifically and/or generically
+		as you want. Batch developing everything can then be done with a single, powerful commmand.
+		
 
-	Some options have an uppercased VARNAME, ex. OUTDIR. In a convmlv config file, you can specify this option
-	in the following format, line by line:
-		<VARNAME> <VALUE>
-		
-	If the value is a true/false flag, simply specifying VARNAME is enough. Otherwise, normal rules for the value applies.
-	
-	Options override each other as such:
-	-LOCAL overrides GLOBAL config.
-	-Passed arguments override both configs.
-	-Lines starting with # are comments.
-	-Name a config using the VARNAME: CONFIG_NAME <name>
-	
-	
-	File-Specific Block: A LOCAL config file lets you specify options for specific input names:
-		/ <TRUNCATED INPUTNAME>
-			...specify options
-		*
-		
-	File-Specific Blocks override all other options. This allows one to create
-	a single config file to batch-develop several input files/folders at once, after deciding how each one should
-	look/be configured individually.
-	
-	Notes on Usage:
-	-You must use the truncated (no .mlv or .raw) input name after the /.
-	-No nested blocks.
-	-Indentation by tabs or spaces is allowed, but not enforced.
+
+Contact me with any feedback or questions at convmlv@sofusrose.com, or PM me (so-rose) on the ML forums!
 ```

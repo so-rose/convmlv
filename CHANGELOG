@@ -1,4 +1,9 @@
 [code]
+[b]v1.9.2[/b]: [url=https://bitbucket.org/so-rose/convmlv/src]https://bitbucket.org/so-rose/convmlv/src[/url]
+[size=8pt]*Atadenoise Support! It's a great denoising method, used with "-N <A>-<B>" See the documentation for how to configure A and B values.[/size]
+[size=8pt]*General FFMPEG Filter Support: The framework for any ffmpeg -vf filters exists now! lut3d and atadenoise are currently implemented.[/size]
+[size=8pt]*Bug Fixes: LUTs can now be applied to EXR's! Other bugs fixed too.[/size]
+
 [b]v1.9.1[/b]: [url=https://bitbucket.org/so-rose/convmlv/src]https://bitbucket.org/so-rose/convmlv/src[/url]
 [size=8pt]*Fully Supported Config Files! Check the help page; all options for which this makes sense can be specified in global, local, or file-specific config files.[/size]
 [size=8pt]*File-Specific Blocks: With this, just make one config file w/any special options per file, and you're done. Huge time saver in production situations![/size]

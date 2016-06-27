@@ -37,6 +37,7 @@ def splitThreadRange(inNum, inThreads) :
 if __name__ == "__main__" :
 	num = int(sys.argv[1])
 	threads = int(sys.argv[2])
-	print(*splitThreadRange(num, threads))
+	if num == 1: print("0-0")
+	else: print(*splitThreadRange(num, threads))
 
 #mlv_dump cannot use 0-0.

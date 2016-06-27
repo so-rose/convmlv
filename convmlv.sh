@@ -132,12 +132,14 @@ setDefaults() { #Set all the default variables. Run here, and also after each AR
 	FFMPEG_FILTERS=false #Whether or not FFMPEG filters are going to be used.
 	TEMP_NOISE="" #Temporal noise reduction.
 	tempDesc=""
-	LUT=""
+	LUT="" #lut3d LUT application
 	lutDesc=""
-	DESHAKE=""
+	DESHAKE="" #deshake video stabilisation.
 	deshakeDesc=""
 	HQ_NOISE="" #hqdn3d noise reduction.
 	hqDesc=""
+	REM_NOISE="" #removegrain noise reduction
+	remDesc=""
 }
 
 setDefaults #Run now, but also later.
@@ -240,8 +242,14 @@ OPTIONS, RAW DEVELOPMENT:
 	  --> Spacial/Temporal (S/T). S will soften/blur/smooth, T will remove noise without doing that but may create artifacts.
 	  --> Luma/Chroma (L/C). L is the detail, C is the color. Each one's denoising may be manipulated Spacially or Temporally.
 	  
-	  --> Options: <LS>-<CS>:<LT>-<CT>
+	  --> Option Value: <LS>-<CS>:<LT>-<CT>
 	  --> Weak: 2-1:2-3. Medium: 3-2:2-3. Strong: 7-7:5-5
+	
+	-G [i-i-i-i]		REM_NOISE - Yet another spatial denoiser, with 4 choices of 24 modes.
+	  --> See https://ffmpeg.org/ffmpeg-filters.html#removegrain for list of modes.
+	  
+	  --> Option Value: <mode1>-<mode2>-<mode3>-<mode4>
+	  --> I truly cannot tell you what values will be helpful to you; there are too many... Look at the link above!
 	
 	-g [0:4]		SPACE - Output color transformation.
 	  --> 0: Linear. 1: 2.2 (Adobe RGB). 2: 1.8 (ProPhoto RGB). 3: sRGB. 4: BT.709.
@@ -502,6 +510,18 @@ evalConf() {
 					hqDesc="3D Denoiser"
 					FFMPEG_FILTERS=true
 				;;
+				"REM_NOISE")
+					vals="$(echo "${line}" | cut -d$' ' -f2)"
+					
+					m1=`echo "${vals}" | cut -d$'-' -f1`
+					m2=`echo "${vals}" | cut -d$'-' -f2`
+					m3=`echo "${vals}" | cut -d$'-' -f3`
+					m4=`echo "${vals}" | cut -d$'-' -f4`
+					
+					REM_NOISE="removegrain=m0=${m1}:m1=${m2}:m2=${m3}:m3=${m4}"
+					remDesc="RemoveGrain Modal Denoiser"
+					FFMPEG_FILTERS=true
+				;;
 				"SPACE") 
 					mode=`echo "${line}" | cut -d$' ' -f2`
 					case ${mode} in
@@ -583,7 +603,7 @@ parseArgs() { #Amazing new argument parsing!!!
 	longArg() { #Creates VAL
 		ret="${!OPTIND}"; OPTIND=$(( $OPTIND + 1 ))
 	}
-	while getopts "vh C: o:P: T:  i t: m p: s: k r:  d: f H: c: n: N: Q: g:  w: l: S:  D u b a: F: R:  q K Y M    -:" opt; do
+	while getopts "vh C: o:P: T:  i t: m p: s: k r:  d: f H: c: n: N: Q: G: g:  w: l: S:  D u b a: F: R:  q K Y M    -:" opt; do
 		#~ echo $opt ${OPTARG}
 		case "$opt" in
 			-) #Long Arguments
@@ -785,6 +805,18 @@ parseArgs() { #Amazing new argument parsing!!!
 				
 				HQ_NOISE="hqdn3d=luma_spatial=${LS}:chroma_spatial=${CS}:luma_tmp=${LT}:chroma_tmp=${CT}"
 				hqDesc="3D Denoiser"
+				FFMPEG_FILTERS=true
+				;;
+			G)
+				vals=${OPTARG}
+					
+				m1=`echo "${vals}" | cut -d$'-' -f1`
+				m2=`echo "${vals}" | cut -d$'-' -f2`
+				m3=`echo "${vals}" | cut -d$'-' -f3`
+				m4=`echo "${vals}" | cut -d$'-' -f4`
+				
+				REM_NOISE="removegrain=m0=${m1}:m1=${m2}:m2=${m3}:m3=${m4}"
+				remDesc="RemoveGrain Modal Denoiser"
 				FFMPEG_FILTERS=true
 				;;
 			g)
@@ -1085,15 +1117,15 @@ for ARG in "${FILE_ARGS_ITER[@]}"; do #Go through FILE_ARGS_ITER array, copied f
 	setBL=true
 	
 	joinArgs() { local d=$1; shift; echo -n "$1"; shift; printf "%s" "${@/#/$d}"; }
-			
+	
 	#Construct the FFMPEG filters.
 	if [[ $FFMPEG_FILTERS == true ]]; then
 		FINAL_SCALE="scale=trunc(iw/2)*${SCALE}:trunc(ih/2)*${SCALE}"
-		V_FILTERS="-vf $(joinArgs , ${DESHAKE} ${TEMP_NOISE} ${HQ_NOISE} ${LUT})"
-		V_FILTERS_PROX="-vf $(joinArgs , ${DESHAKE} ${TEMP_NOISE} ${HQ_NOISE} ${LUT} ${FINAL_SCALE})" #Proxy filter set adds the scale component.
+		V_FILTERS="-vf $(joinArgs , ${DESHAKE} ${TEMP_NOISE} ${HQ_NOISE} ${REM_NOISE} ${LUT})"
+		V_FILTERS_PROX="-vf $(joinArgs , ${DESHAKE} ${TEMP_NOISE} ${HQ_NOISE} ${REM_NOISE} ${LUT} ${FINAL_SCALE})" #Proxy filter set adds the scale component.
 		
 		#Created formatted array of filters, FILTER_ARR.
-		declare -a compFilters=("${tempDesc}" "${lutDesc}" "${deshakeDesc}" "${hqDesc}")
+		declare -a compFilters=("${tempDesc}" "${lutDesc}" "${deshakeDesc}" "${hqDesc}" "${remDesc}")
 		for v in "${compFilters[@]}"; do if test "$v"; then FILTER_ARR+=("$v"); fi; done
 	fi
 #Evaluate convmlv.conf configuration file for file-specific blocks.

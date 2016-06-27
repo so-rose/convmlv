@@ -106,8 +106,14 @@ OPTIONS, RAW DEVELOPMENT:
 	  --> Spacial/Temporal (S/T). S will soften/blur/smooth, T will remove noise without doing that but may create artifacts.
 	  --> Luma/Chroma (L/C). L is the detail, C is the color. Each one's denoising may be manipulated Spacially or Temporally.
 	  
-	  --> Options: <LS>-<CS>:<LT>-<CT>
+	  --> Option Value: <LS>-<CS>:<LT>-<CT>
 	  --> Weak: 2-1:2-3. Medium: 3-2:2-3. Strong: 7-7:5-5
+	
+	-G [i-i-i-i]		REM_NOISE - Yet another spatial denoiser, with 4 choices of 24 modes.
+	  --> See https://ffmpeg.org/ffmpeg-filters.html#removegrain for list of modes.
+	  
+	  --> Option Value: <mode1>-<mode2>-<mode3>-<mode4>
+	  --> I truly cannot tell you what values will be helpful to you; there are too many... Look at the link above!
 	
 	-g [0:4]		SPACE - Output color transformation.
 	  --> 0: Linear. 1: 2.2 (Adobe RGB). 2: 1.8 (ProPhoto RGB). 3: sRGB. 4: BT.709.

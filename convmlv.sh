@@ -1711,7 +1711,7 @@ for ARG in "${FILE_ARGS_ITER[@]}"; do #Go through FILE_ARGS_ITER array, copied f
 		
 		echo -e "\n"
 		
-#FFMPEG Filter Application: Temporal Denoising, 3D LUTs, Deshake, hqdn Denoising so far. See construction of $V_FILTERS in PREPARATION.
+#FFMPEG Filter Application: Temporal Denoising, 3D LUTs, Deshake, hqdn Denoising, removegrain denoising so far. See construction of $V_FILTERS in PREPARATION.
 		if [[ $FFMPEG_FILTERS == true ]]; then
 			tmpFiltered=${TMP}/filtered
 			mkdir $tmpFiltered

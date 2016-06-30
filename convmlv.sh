@@ -2,10 +2,10 @@
 
 #TODO:
 #~ Stats for .RAW files.
-#~ Integrate anti-vertical banding. May require being able to use multiple darkframe files.
+#~ Color Systems - CLog, etc. .
 
 #~ Better Preview:
-#~ --> A different module (like -e) for live viewing of footage, under convmlv settings. Danne is working on this :).
+#~ --> A different module (like -q or -R) for live viewing of footage, under convmlv settings. Danne is working on this :).
 
 #BUG: Relative OUTDIR makes baxpixel generation fail if ./mlv2badpixels.sh doesn't exist. Fixed on Linux only.
 #CONCERN: Weirdness with color spaces in general. No impact to user; just some weirdly placed sRGB conversions if'ed by DPX.
@@ -36,7 +36,7 @@
 #~ SOFTWARE.
 
 #BASIC VARS
-VERSION="1.9.3" #Version string.
+VERSION="1.9.4" #Version string.
 INPUT_ARGS=$(echo "$@") #The original input argument string.
 
 if [[ $OSTYPE == "linux-gnu" ]]; then
@@ -115,6 +115,8 @@ setDefaults() { #Set all the default variables. Run here, and also after each AR
 	BADPIXEL_PATH=""
 	isBP=false
 	DARKFRAME=""
+	useDF=false
+	DARK_PROC=""
 	SETTINGS_OUTPUT=false
 	MK_DARK=false
 	DARK_OUT=""
@@ -130,6 +132,7 @@ setDefaults() { #Set all the default variables. Run here, and also after each AR
 
 #FFMPEG Filters
 	FFMPEG_FILTERS=false #Whether or not FFMPEG filters are going to be used.
+	FILTER_ARR=()
 	TEMP_NOISE="" #Temporal noise reduction.
 	tempDesc=""
 	LUT="" #lut3d LUT application
@@ -147,7 +150,7 @@ setDefaults() { #Set all the default variables. Run here, and also after each AR
 setDefaults #Run now, but also later.
 
 help() {
-less -R << EOF 
+cat << EOF 
 Usage:
 	$(echo -e "\033[1m./convmlv.sh\033[0m [FLAGS] [OPTIONS] \033[2mfiles\033[0m")
 	
@@ -263,7 +266,7 @@ OPTIONS, COLOR:
 	-w [0:2]		WHITE - This is a modal white balance setting.
 	  --> 0: Auto WB. 1: Camera WB (default). 2: No Change.
 	  
-	-A [i:i:i:i]	SHARP - Lets you sharpen, or blur, your footage.
+	-A [i:i:i:i]		SHARP - Lets you sharpen, or blur, your footage.
 	  --> Size/Strength (S/T). S is the size of the sharpen/blur effect, T is the strength of the sharpen/blur effect.
 	  --> Luma/Chroma (L/C). L is the detail, C is the color. Luma sharpening more effective.
 	  --> Tip: Chroma blur can actually be a helpful noise reduction technique.
@@ -400,20 +403,24 @@ evalConf() {
 	if [[ -z $file ]]; then return; fi
 	
 	fBlock=false #Whether or not we are in a file-specific block.
+	fID="" #The name of the file-specific block we're in.
 	
 	while IFS="" read -r line || [[ -n "$line" ]]; do
 		line=$(echo "$line" | sed -e 's/^[ \t]*//') #Strip leading tabs/whitespaces.
 		
 		if [[ `echo "${line}" | cut -c1-1` == "#" ]]; then continue; fi #Ignore comments
 		
-		if [[ `echo "${line}" | cut -c1-1` == "/" && `echo "${line}" | cut -d$' ' -f2` == $TRUNC_ARG ]]; then
-			if [[ $fBlock == true ]]; then echo "\n\e[0;31m\e[1mWARNING: Nested blocks!!!\e[0m"; fi
+		if [[ `echo "${line}" | cut -c1-1` == "/" ]]; then
+			if [[ $fBlock == true ]]; then echo -e "\n\e[0;31m\e[1mWARNING: Nested blocks!!!\e[0m"; fi
 			fBlock=true
+			fID=`echo "${line}" | cut -d$' ' -f2`
+			continue
 		fi #Enter a file-specific block with /, provided the argument name is correct.
 		
 		if [[ `echo "${line}" | cut -c1-1` == "*" ]]; then fBlock=false; fi #Leave a file-specific block.
-			
-		if [[ ($argOnly == false && $fBlock == false) || ($argOnly == true && $fBlock == true) ]]; then #Conditions under which to write values.
+		
+		#~ echo $argOnly $fBlock $fID ${TRUNC_ARG%.*} `echo "${line}" | cut -d$' ' -f1`
+		if [[ ($argOnly == false && $fBlock == false) || ( ($argOnly == true && $fBlock == true) && $fID == ${TRUNC_ARG%.*} ) ]]; then #Conditions under which to write values.
 			case `echo "${line}" | cut -d$' ' -f1` in
 				"CONFIG_NAME") CONFIG_NAME=`echo "${line}" | cut -d$' ' -f2` #Not doing anything with this right now.
 				;;
@@ -615,7 +622,7 @@ evalConf() {
 				;;
 				"BADPIXEL_PATH") BADPIXEL_PATH=`echo "${line}" | cut -d$' ' -f2`
 				;;
-				"DARKFRAME") DARKFRAME=`echo "${line}" | cut -d$' ' -f2`
+				"DARKFRAME") DARKFRAME=`echo "${line}" | cut -d$' ' -f2`; useDF=true
 				;;
 			esac
 		fi
@@ -925,6 +932,7 @@ parseArgs() { #Amazing new argument parsing!!!
 				;;
 			F)
 				DARKFRAME=${OPTARG}
+				useDF=true
 				;;
 			R)
 				MK_DARK=true
@@ -1147,11 +1155,16 @@ for ARG in "${FILE_ARGS_ITER[@]}"; do #Go through FILE_ARGS_ITER array, copied f
 #The Very Basics
 	BASE="$(basename "$ARG")"
 	EXT="${BASE##*.}"
+	DIRNAME=$(dirname "$ARG")
 	TRUNC_ARG="${BASE%.*}"
 	SCALE=`echo "($(echo "${PROXY_SCALE}" | sed 's/%//') / 100) * 2" | bc -l` #Get scale as factor for halved video, *2 for 50%
 	setBL=true
 	
 	joinArgs() { local d=$1; shift; echo -n "$1"; shift; printf "%s" "${@/#/$d}"; }
+#Evaluate convmlv.conf configuration file for file-specific blocks.
+	evalConf "$LCONFIG" true
+#Check that things exist.
+	checkDeps
 	
 	#Construct the FFMPEG filters.
 	if [[ $FFMPEG_FILTERS == true ]]; then
@@ -1160,13 +1173,10 @@ for ARG in "${FILE_ARGS_ITER[@]}"; do #Go through FILE_ARGS_ITER array, copied f
 		V_FILTERS_PROX="-vf $(joinArgs , ${HQ_NOISE} ${TEMP_NOISE} ${REM_NOISE} ${DESHAKE} ${SHARP} ${LUT} ${FINAL_SCALE})" #Proxy filter set adds the scale component.
 		
 		#Created formatted array of filters, FILTER_ARR.
+		compFilters=()
 		declare -a compFilters=("${hqDesc}" "${tempDesc}" "${remDesc}" "${deshakeDesc}" "${sharpDesc}" "${lutDesc}")
 		for v in "${compFilters[@]}"; do if test "$v"; then FILTER_ARR+=("$v"); fi; done
 	fi
-#Evaluate convmlv.conf configuration file for file-specific blocks.
-	evalConf "$LCONFIG" true
-#Check that things exist.
-	checkDeps
 
 #Potentially Print Settings
 	if [ $SETTINGS_OUTPUT == true ]; then
@@ -1174,7 +1184,7 @@ for ARG in "${FILE_ARGS_ITER[@]}"; do #Go through FILE_ARGS_ITER array, copied f
 			# Read the header for interesting settings :) .
 			mlvSet
 			
-			echo -e "\n\e[1m\e[0;32m\e[1mFile\e[0m\e[0m: ${ARG}\n"
+			echo -e "\n\e[1m\e[0;32m\e[1mFile\e[0m: ${ARG}\n"
 			prntSet
 			continue
 		elif [ $EXT == "RAW" ] || [ $EXT == "raw" ]; then
@@ -1208,10 +1218,18 @@ for ARG in "${FILE_ARGS_ITER[@]}"; do #Go through FILE_ARGS_ITER array, copied f
 	
 	list=""
 	for item in $remArr; do
+		itemBase=$(basename $item)
+		itemExt="${itemBase##*.}"
+		itemDir=$(dirname "$item")
+		
 		if [ -z "${list}" ]; then
-			list="${item}"
+			if [[ $itemBase == $(basename $ARG) ]]; then
+				list="${itemDir}/\e[1m\e[32m${itemBase%.*}\e[0m.${itemExt}"
+			else
+				list="${itemDir}/\e[1m${itemBase%.*}\e[0m.${itemExt}"
+			fi
 		else
-			list="${list}, ${item}"
+			list="${list}, ${itemDir}/\e[1m${itemBase%.*}\e[0m.${itemExt}"
 		fi
 	done
 	
@@ -1325,7 +1343,7 @@ for ARG in "${FILE_ARGS_ITER[@]}"; do #Go through FILE_ARGS_ITER array, copied f
 	fi
 	
 #Darkframe Averaging
-	if [ ! $DARKFRAME == "" ]; then
+	if [[ $useDF == true ]]; then
 		echo -e "\e[1m${TRUNC_ARG}:\e[0m Creating darkframe for subtraction...\n"
 		
 		avgFrame="${TMP}/avg.darkframe" #The path to the averaged darkframe file.
@@ -1382,7 +1400,7 @@ for ARG in "${FILE_ARGS_ITER[@]}"; do #Go through FILE_ARGS_ITER array, copied f
 			fileRanges=(`echo $($SRANGE $REAL_FRAMES $THREADS)`) #Get an array of frame ranges from the amount of frames and threads. I used a python script for this.
 			#Looks like this: 0-1 2-2 3-4 5-5 6-7 8-8 9-10. Put that in an array.
 
-			devDNG() { #Takes n arguments: 1{}, the frame range 2$MLV_DUMP 3$REAL_MLV 4$DARK_PROC 5$tmpOut 6$smooth 7$TMP 8$FRAME_END 9$TRUNC_ARG 10$FRAME_START
+			devDNG() { #Takes n arguments: 1{}, the frame range 2$MLV_DUMP 3$REAL_MLV 4$DARK_PROC 5$no_data 6$smooth 7$TMP 8$FRAME_END 9$TRUNC_ARG 10$FRAME_START
 				range=$1
 				firstFrame=false
 				if [[ $range == "0-0" ]]; then #mlv_dump can't handle 0-0, so we develop 0-1.
@@ -1420,7 +1438,7 @@ for ARG in "${FILE_ARGS_ITER[@]}"; do #Go through FILE_ARGS_ITER array, copied f
 			
 			for range in "${fileRanges[@]}"; do echo $range; done | #For each frame range, assign a thread.
 				xargs -I {} -P $THREADS -n 1 \
-					bash -c "devDNG '{}' '$MLV_DUMP' '$REAL_MLV' '$DARK_PROC' '$tmpOut' '$smooth' '$TMP' '$FRAME_END' '$TRUNC_ARG' '$FRAME_START'"
+					bash -c "devDNG '{}' '$MLV_DUMP' '$REAL_MLV' '$DARK_PROC' 'no_data' '$smooth' '$TMP' '$FRAME_END' '$TRUNC_ARG' '$FRAME_START'"
 			
 			#Since devDNG must run in a subshell, globals don't follow. Must pass *everything* in.
 			echo -e "\e[2K\rMLV to DNG: Frame ${FRAME_END}/${FRAME_END}\c" #Ensure it looks right at the end.
@@ -1436,7 +1454,7 @@ for ARG in "${FILE_ARGS_ITER[@]}"; do #Go through FILE_ARGS_ITER array, copied f
 				done
 				rm -r $tmpOut #Remove the now empty subfolder
 			done
-			
+						
 		elif [ $EXT == "RAW" ] || [ $EXT == "raw" ]; then
 			rawSet
 			echo -e $rawStat
@@ -1460,7 +1478,6 @@ for ARG in "${FILE_ARGS_ITER[@]}"; do #Go through FILE_ARGS_ITER array, copied f
 		bad_name="badpixels_${TRUNC_ARG}.txt"
 		gen_bad="${TMP}/${bad_name}"
 		touch $bad_name
-		#~ exit
 		
 		if [ $EXT == "MLV" ] || [ $EXT == "mlv" ]; then
 			$MLV_BP -o $gen_bad $ARG
@@ -1556,7 +1573,7 @@ for ARG in "${FILE_ARGS_ITER[@]}"; do #Go through FILE_ARGS_ITER array, copied f
 		echo -e "\e[1m${TRUNC_ARG}:\e[0m Generating WB...\n"
 		
 		#Calculate n, the distance between samples.
-		frameLen=$(echo "$FRAME_END - $FRAME_START" | bc)
+		frameLen=$(echo "$FRAME_END - $FRAME_START + 1" | bc) #Offset by one to avoid division by 0 errors later. min value must be 1.
 		if [[ $WHITE_SPD -gt $frameLen ]]; then
 			WHITE_SPD=$frameLen
 		fi
@@ -1746,28 +1763,38 @@ for ARG in "${FILE_ARGS_ITER[@]}"; do #Go through FILE_ARGS_ITER array, copied f
 		
 		echo -e "\n"
 		
-#FFMPEG Filter Application: Temporal Denoising, 3D LUTs, Deshake, hqdn Denoising, removegrain denoising so far. See construction of $V_FILTERS in PREPARATION.
+#FFMPEG Filter Application: Temporal Denoising, 3D LUTs, Deshake, hqdn Denoising, removegrain denoising, unsharp so far.
+#See construction of $V_FILTERS in PREPARATION.
 		if [[ $FFMPEG_FILTERS == true ]]; then
-			tmpFiltered=${TMP}/filtered
+			tmpFiltered="${TMP}/filtered"
+			tmpUnfiltered="${TMP}/unfiltered"
 			mkdir $tmpFiltered
+			mkdir $tmpUnfiltered
 			
 			#Give correct output.
 			echo -e "\e[1mApplying Filters:\e[0m $(joinArgs ", " "${FILTER_ARR[@]}")...\n"
 			
 			if [ $IMG_FMT == "exr" ]; then
-				echo -e "Note: EXR filtering lags before and after processing.\n"
+				echo -e "Note: EXR filtering lags due to middle-step conversion (ffmpeg has no EXR encoder).\n"
 				
 				img_res=$(identify ${SEQ}/${TRUNC_ARG}_$(printf "%06d" $(echo "$FRAME_START" | bc)).${IMG_FMT} | cut -d$' ' -f3)
 				
-				convert "${SEQ}/${TRUNC_ARG}_%06d.exr[${FRAME_START}-${FRAME_END}]" -set colorspace RGB  dpx:- | \
-					ffmpeg -f image2pipe -vcodec dpx -s "${img_res}" -r $FPS -stats -i pipe:0 \
-					$V_FILTERS \
-					-vcodec dpx -n -r $FPS -f image2pipe pipe:1 | \
-						convert -depth 16 - -colorspace RGB -compress piz -set colorspace RGB "${tmpFiltered}/%06d.${IMG_FMT}"
+				i=0
+				#Ideally, this would be threaded.
+				for devd in $SEQ/*.exr; do
+					convert $devd -set colorspace RGB "${tmpUnfiltered}/$(printf "%06d" ${i}).dpx"
+					let i++
+				done
+				
+				ffmpeg -f image2 -vcodec dpx -s "${img_res}" -r $FPS -loglevel panic -stats -i "${tmpUnfiltered}/%06d.dpx" $V_FILTERS -vcodec dpx \
+					-n -r $FPS -f image2pipe pipe:1 | \
+						convert -depth 16 - -colorspace RGB -compress piz -set colorspace RGB "${tmpFiltered}/%06d.exr"
 						#For some reason, this whole process sends EXR's into sRGB. That's why -colorspace RGB is specified. See Nasty Hacks.
 			else
+				#Ideally, this would be all we need. But alas, ffmpeg + exr = breaks.
 				ffmpeg -start_number $FRAME_START -f image2 -i "${SEQ}/${TRUNC_ARG}_%06d.${IMG_FMT}" -loglevel panic -stats $V_FILTERS "${tmpFiltered}/%06d.${IMG_FMT}"
 			fi
+			
 			echo ""
 			
 			#Replace the images in $SEQ with the filtered ones.
@@ -1781,7 +1808,7 @@ for ARG in "${FILE_ARGS_ITER[@]}"; do #Go through FILE_ARGS_ITER array, copied f
 			done
 		fi
 	fi
-	
+		
 #MOVIE PROCESSING
 	VID="${FILE}/${TRUNC_ARG}"
 	
@@ -1847,19 +1874,20 @@ for ARG in "${FILE_ARGS_ITER[@]}"; do #Go through FILE_ARGS_ITER array, copied f
 	rm -rf $TMP
 	
 #MANUAL SANDBOXING - see note at the header of the loop.
+	set -- $INPUT_ARGS #Reset the argument input for reparsing again.
 	setDefaults #Hard reset everything.
+	OPTIND=1
 	
 	evalConf "$GCONFIG" false #Rearse global config file.
 	parseArgs "$@" #First, parse args all to set LCONFIG.
 	shift $((OPTIND-1))
-	OPTIND=1
 
 	evalConf "$LCONFIG" false #Parse local config file.
 	set -- $INPUT_ARGS #Reset the argument input for reparsing again, over the local config file.
-
+	OPTIND=1
+	
 	parseArgs "$@"
 	shift $((OPTIND-1))
-	OPTIND=1
 	
 	let ARGNUM--
 done

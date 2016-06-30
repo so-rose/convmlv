@@ -1,4 +1,14 @@
 [code]
+[b]v1.9.4[/b]: [url=https://bitbucket.org/so-rose/convmlv/src]https://bitbucket.org/so-rose/convmlv/src[/url]
+[size=8pt]*Added Unsharp filter. Useful for counteracting all 6 denoisers ;).[/size]
+[size=8pt]*Bug Fixes/Small Improvements: File-specific blocks/multiple files fixed. Filter application has been sanitized.[/size]
+
+[b]v1.9.3[/b]: [url=https://bitbucket.org/so-rose/convmlv/src]https://bitbucket.org/so-rose/convmlv/src[/url]
+[size=8pt]*Deshake Support! Just specify -D, and auto-stabilization will be applied. You may wish to scale it later.[/size]
+[size=8pt]*HQDN3D Denoising Support. A superior denoising method (used in Handbrake). See 'convmlv -h' for usage instructions..[/size]
+[size=8pt]*removegrain Denoising Support. A more specialized denoising method, ripe for experimentation. See https://ffmpeg.org/ffmpeg-filters.html#removegrain .[/size]
+[size=8pt]*Bug Fixes: Different formats should now look the same. They didn't before... I hate color spaces... Misc. Bug fixes too.[/size]
+
 [b]v1.9.2[/b]: [url=https://bitbucket.org/so-rose/convmlv/src]https://bitbucket.org/so-rose/convmlv/src[/url]
 [size=8pt]*Atadenoise Support! It's a great denoising method, used with "-N <A>-<B>" See the documentation for how to configure A and B values.[/size]
 [size=8pt]*General FFMPEG Filter Support: The framework for any ffmpeg -vf filters exists now! lut3d and atadenoise are currently implemented.[/size]

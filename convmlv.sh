@@ -140,6 +140,8 @@ setDefaults() { #Set all the default variables. Run here, and also after each AR
 	hqDesc=""
 	REM_NOISE="" #removegrain noise reduction
 	remDesc=""
+	SHARP=""
+	sharpDesc=""
 }
 
 setDefaults #Run now, but also later.
@@ -260,6 +262,15 @@ OPTIONS, RAW DEVELOPMENT:
 OPTIONS, COLOR:
 	-w [0:2]		WHITE - This is a modal white balance setting.
 	  --> 0: Auto WB. 1: Camera WB (default). 2: No Change.
+	  
+	-A [i:i:i:i]	SHARP - Lets you sharpen, or blur, your footage.
+	  --> Size/Strength (S/T). S is the size of the sharpen/blur effect, T is the strength of the sharpen/blur effect.
+	  --> Luma/Chroma (L/C). L is the detail, C is the color. Luma sharpening more effective.
+	  --> Tip: Chroma blur can actually be a helpful noise reduction technique.
+	
+	  --> Option Value: <LS>:<LT>:<CS>:<CT>
+	  --> LS and CS must be ODD, between 3 and 63. Negative LT/CT values blur, while positive ones sharpen.
+	  --> Strong Sharp: 7:3:7:3 Strong Blur: 7,-3:7,-3
 	  
 	-l <path>		LUT - Specify a LUT to apply.
 	  --> Supports cube, 3dl, dat, m3d.
@@ -560,6 +571,18 @@ evalConf() {
 						;;
 					esac
 				;;
+				"SHARP")
+					val=`echo "${line}" | cut -d$' ' -f2`
+					
+					lSize=`echo "${val}" | cut -d$':' -f1`
+					lStr=`echo "${val}" | cut -d$':' -f2`
+					cSize=`echo "${val}" | cut -d$':' -f3`
+					cStr=`echo "${val}" | cut -d$':' -f4`
+					
+					SHARP="unsharp=${lSize}:${lSize}:${lStr}:${cSize}:${cSize}:${cStr}"
+					sharpDesc="Sharpen/Blur"
+					FFMPEG_FILTERS=true
+				;;
 				"LUT")
 					LUT_PATH=`echo "${line}" | cut -d$' ' -f2`
 					
@@ -603,7 +626,7 @@ parseArgs() { #Amazing new argument parsing!!!
 	longArg() { #Creates VAL
 		ret="${!OPTIND}"; OPTIND=$(( $OPTIND + 1 ))
 	}
-	while getopts "vh C: o:P: T:  i t: m p: s: k r:  d: f H: c: n: N: Q: G: g:  w: l: S:  D u b a: F: R:  q K Y M    -:" opt; do
+	while getopts "vh C: o:P: T:  i t: m p: s: k r:  d: f H: c: n: N: Q: G: g:  w: A: l: S:  D u b a: F: R:  q K Y M    -:" opt; do
 		#~ echo $opt ${OPTARG}
 		case "$opt" in
 			-) #Long Arguments
@@ -856,6 +879,18 @@ parseArgs() { #Amazing new argument parsing!!!
 					"2") WHITE="-r 1 1 1 1"; CAMERA_WB=false; GEN_WHITE=false #Will not apply any white balance.
 					;;
 				esac
+				;;
+			A)
+				val=${OPTARG}
+				
+				lSize=`echo "${val}" | cut -d$':' -f1`
+				lStr=`echo "${val}" | cut -d$':' -f2`
+				cSize=`echo "${val}" | cut -d$':' -f3`
+				cStr=`echo "${val}" | cut -d$':' -f4`
+				
+				SHARP="unsharp=${lSize}:${lSize}:${lStr}:${cSize}:${cSize}:${cStr}"
+				sharpDesc="Sharpen/Blur"
+				FFMPEG_FILTERS=true
 				;;
 			l)
 				LUT_PATH=${OPTARG}
@@ -1121,11 +1156,11 @@ for ARG in "${FILE_ARGS_ITER[@]}"; do #Go through FILE_ARGS_ITER array, copied f
 	#Construct the FFMPEG filters.
 	if [[ $FFMPEG_FILTERS == true ]]; then
 		FINAL_SCALE="scale=trunc(iw/2)*${SCALE}:trunc(ih/2)*${SCALE}"
-		V_FILTERS="-vf $(joinArgs , ${DESHAKE} ${TEMP_NOISE} ${HQ_NOISE} ${REM_NOISE} ${LUT})"
-		V_FILTERS_PROX="-vf $(joinArgs , ${DESHAKE} ${TEMP_NOISE} ${HQ_NOISE} ${REM_NOISE} ${LUT} ${FINAL_SCALE})" #Proxy filter set adds the scale component.
+		V_FILTERS="-vf $(joinArgs , ${HQ_NOISE} ${TEMP_NOISE} ${REM_NOISE} ${DESHAKE} ${SHARP} ${LUT})"
+		V_FILTERS_PROX="-vf $(joinArgs , ${HQ_NOISE} ${TEMP_NOISE} ${REM_NOISE} ${DESHAKE} ${SHARP} ${LUT} ${FINAL_SCALE})" #Proxy filter set adds the scale component.
 		
 		#Created formatted array of filters, FILTER_ARR.
-		declare -a compFilters=("${tempDesc}" "${lutDesc}" "${deshakeDesc}" "${hqDesc}" "${remDesc}")
+		declare -a compFilters=("${hqDesc}" "${tempDesc}" "${remDesc}" "${deshakeDesc}" "${sharpDesc}" "${lutDesc}")
 		for v in "${compFilters[@]}"; do if test "$v"; then FILTER_ARR+=("$v"); fi; done
 	fi
 #Evaluate convmlv.conf configuration file for file-specific blocks.
@@ -1720,14 +1755,14 @@ for ARG in "${FILE_ARGS_ITER[@]}"; do #Go through FILE_ARGS_ITER array, copied f
 			echo -e "\e[1mApplying Filters:\e[0m $(joinArgs ", " "${FILTER_ARR[@]}")...\n"
 			
 			if [ $IMG_FMT == "exr" ]; then
-				echo -e "Note: EXRs may hang after filtering.\n"
+				echo -e "Note: EXR filtering lags before and after processing.\n"
 				
 				img_res=$(identify ${SEQ}/${TRUNC_ARG}_$(printf "%06d" $(echo "$FRAME_START" | bc)).${IMG_FMT} | cut -d$' ' -f3)
 				
-				convert "${SEQ}/${TRUNC_ARG}_%06d.exr[${FRAME_START}-${FRAME_END}]" -define stream:buffer-size=0 -set colorspace RGB  ppm:- | \
-					ffmpeg -f image2pipe -vcodec ppm -s "${img_res}" -r $FPS -loglevel panic -stats -i pipe:0 \
+				convert "${SEQ}/${TRUNC_ARG}_%06d.exr[${FRAME_START}-${FRAME_END}]" -set colorspace RGB  dpx:- | \
+					ffmpeg -f image2pipe -vcodec dpx -s "${img_res}" -r $FPS -stats -i pipe:0 \
 					$V_FILTERS \
-					-vcodec ppm -n -r $FPS -f image2pipe pipe:1 | \
+					-vcodec dpx -n -r $FPS -f image2pipe pipe:1 | \
 						convert -depth 16 - -colorspace RGB -compress piz -set colorspace RGB "${tmpFiltered}/%06d.${IMG_FMT}"
 						#For some reason, this whole process sends EXR's into sRGB. That's why -colorspace RGB is specified. See Nasty Hacks.
 			else

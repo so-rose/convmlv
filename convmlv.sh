@@ -150,7 +150,7 @@ setDefaults() { #Set all the default variables. Run here, and also after each AR
 setDefaults #Run now, but also later.
 
 help() {
-cat << EOF 
+less -R << EOF 
 Usage:
 	$(echo -e "\033[1m./convmlv.sh\033[0m [FLAGS] [OPTIONS] \033[2mfiles\033[0m")
 	

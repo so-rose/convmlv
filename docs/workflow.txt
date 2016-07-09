@@ -1,0 +1,93 @@
+The convmlv Workflow is a powerful one.
+
+
+Shoot Footage --> 
+convmlv, best-guess preview quality --> convmlv, final quality -->
+Blender, VFX -->
+Blender, film emulation/Looks --> Blender, color grading -->
+Blender/Audacity/etc., Editing
+
+Shoot Footage: Focus on losing no details - we'll be tonemapping later. Dual ISO/HDR isn't bad either. Shoot with correct White Balance, if you can.
+
+--> Ensure that the camera's numbering is not reset while shooting a project. Non-unique filenames will give you headaches.,
+
+
+Organization: Using MLRawViewer, sort each file by scene, and if preproduction was organized enough, by shot as well.
+	-footage: Contains resources for development.
+		raw: Contains all your raw footage. Usually on an external hard drive.
+			-scn: Scenes of the movie. Contains shot folders or takes.
+				-sht: Shots in the scene. Contains multiple takes/angles.
+		conv: Contains all your converted footage.
+		darkframe_<cameramodel>: Contains darkframe files. Set it up for now.
+		convmlv: Contains a specific version of convmlv and its dependencies.
+		<project>.conf
+
+Setup Project: With all the MLV footage organized, it's time to build config files!
+
+FIRST: Ensure convmlv is setup & working correctly from the convmlv folder above.
+
+SECOND: Fill the darkframe_<cameramodel> with darkframes (see convmlv -h) for each combo of ISO, Shutter, Aperture, and Crop/Resolution
+in your project.
+
+THIRD: Create a badpixels.txt for your camera.
+
+-Global Config: convmlv isn't always backwards compatible, so make sure you're using a static version of it. Add this VARNAME:
+	RES_PATH /path/to/footage/convmlv #This makes sure that your project will use one version of convmlv.
+
+-Local Config:
+	CONFIG_NAME <project>
+	IMAGE
+	IMG_FMT 0 #For a Blender workflow, we're working from fast EXR's, not MOVs.
+	
+	PROXY 3 #We need jpgs; mp4s are more for a quick glance at the footage. 2 is fine too.
+	PROXY_SCALE 50% #I like a bit smaller proxies
+
+	DEMO_MODE 3 #Highest quality, but lower it for preview quality.
+	SPACE 0 #We're working in Linear space here.
+
+	BADPIXEL_PATH <path/to/badpixels.txt> #Interpolate around your camera's dead pixels. They're very irritating otherwise.
+
+Use template.txt in the convmlv repository to organize your config files so far, and add any stylistic options you wish to the Local config.
+They will apply to the whole project.
+
+
+Preview Development: Go through each and every piece of footage, and make a file-specific block in the Local Config that corresponds,
+previewing one frame for each/running MLRawViewer to decide. Make sure to add BADPIXELS if your camera is prone to that.
+
+Ask Yourself:
+	-What frame range do I really need of this?
+	-Denoising - Do I need it? Is there predictable motion, so temporal denoising is OK? How much detail am I willing to give up?
+	-Highlights - Should I reconstruct (3-9)? Leave them be (0)? Curve to grey (2)? Allow clipping, setting the SATPOINT too (1)?
+	-White Balance - Should I let AWB have a go at it, or was the Camera WB fine?
+	-Deshake - Are subjects small/immobile, making sure the algorithm doesn't latch onto them? Otherwise I might want to do this later, with more precision.
+	-HDR - Make sure to add DUAL_ISO if you shot HDR.
+	-LUTs - Add any LUT you want, but know that Blender gives you great flexibility with the looks you want.
+	-OUTPUT FOLDER - Make sure each file is placed in an OUTPUT directory in 'conv' that corresponds to the file location in 'raw'.
+
+Lower the demosaicing mode (by adding a CLI option), and you're ready! Run 'convmlv -C path/to/local.conf $(find /path/to/footage -name *.[mM][lL][vV])'
+to develop everything overnight. Look at the shots in motion the next day, tweak, and you're good to go!
+
+
+Final Development: If possible, develop it all once for preview's sake. If not, make sure to take it easy on temporal denoising. When your
+config file is ready, run (again):
+
+'convmlv -C path/to/local.conf $(find /path/to/footage -name *.[mM][lL][vV])'
+
+
+Hello, Blender! I like to make one (depending on project size & collaborators) .blend file, import all exr sequences into the Movie Clip Editor (drag the
+first exr in the sequence and drop it on the big screen, then press the little "F" so it doesn't dissappear when you save), then make one scene per composite.
+
+Make one scene; name it edit.
+
+MAKE SURE: Scene->Color Management->Sequencer must be set to "Linear".
+
+
+This is the time to do VFX of any kind. Render to Linear Half EXR's
+
+
+Film Emulation: Also in Color Management, you'll find some cool options. Render-->View can be turned to Film for film emulation, and various
+old-school 3D LUTs can be found in Look. Since we have very nice dynamic range from ML RAW, playing with the exposure/gamma/curves lends us amazing control.
+
+
+Color Grading: Shift-->A-->Input-->Movie Clip, select the shot named like the scene. Then node away! I like to put a Color-->Tonemap node in front,
+as well as a Color Balance, maybe a Lens Distortion; options are limitless.

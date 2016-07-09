@@ -43,12 +43,13 @@ TEMP_NOISE 0.03-0.04
 HQ_NOISE 2-1:2-3
 #REM_NOISE 1-1-1-1
 
-SPACE 3
+GAMMA 1
+GAMUT 6
 #SHALLOW
 
 ### <------------------ COLOR OPTIONS ------------------>
 
-WHITE 0
+WHITE 1
 
 SHARP 7:3:0:0
 #LUT lut.cube

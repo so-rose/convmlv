@@ -1,4 +1,13 @@
 [code]
+[b]v2.0.0[/b]: I think convmlv is the stablest it's ever been! Though I'm sure there's plenty more bugs to discover :).
+[size=8pt]*Color Management: Real, 3D LUT-based gamma/gamut choices! See -g/-G. There is now minimal quality loss from sensor to image. Adds a dependency: color-core. [/size]
+[size=8pt]*Extra Colorspaces: Add extra colorspace options with the optional dependency color-ext - it gives logspace, wide-gamut, etc. options. It's not yet complete - stay tuned![/size]
+[size=8pt]*More Dependency Lists: Ubuntu, Fedora, and Homebrew lists have been added to the -K option, allowing easy install with those package managers.[/size]
+[size=8pt]*Misc: Specify multiple LUTs in a chain, use a custom DCRAW path, updated + streamlined 'convmlv -h' page.[/size]
+[size=8pt]*Speedups: ffmpeg filtering is faster for EXRs. movie creation is much faster if images were developed.[/size]
+[size=8pt]*Error Checking: Though not complete, it's been drastically upscaled - there should be far fewer "weird errors"; it'll tell you what's wrong.[/size]
+[size=8pt]*Bug Fixes: Reuse of DNGs, DPX colorspace bug, PNG compression format, "files left" display for DNG folders, ARG bug, filter application sequence, file-specific reset bugs.[/size]
+
 [b]v1.9.4[/b]: [url=https://bitbucket.org/so-rose/convmlv/src]https://bitbucket.org/so-rose/convmlv/src[/url]
 [size=8pt]*Added Unsharp filter. Useful for counteracting all 6 denoisers ;).[/size]
 [size=8pt]*Bug Fixes/Small Improvements: File-specific blocks/multiple files fixed. Filter application has been sanitized.[/size]

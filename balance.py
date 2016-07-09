@@ -28,7 +28,7 @@ import sys, os
 from glob import glob
 
 import numpy as np
-from PIL import Image
+#~ from PIL import Image
 import tifffile as tff
 
 def grey(numImg) :
@@ -43,8 +43,8 @@ def grey(numImg) :
 def imgOpen(path) :
 	if path[-4:] == '.tif' or path[-4:] == 'tiff' :
 		return tff.TiffFile(path).asarray()
-	else :
-		return np.asarray(Image.open(path).convert('RGB'))
+	#~ else :
+		#~ return np.asarray(Image.open(path).convert('RGB'))
 
 def greyAvg(paths) :
 	wb = np.asarray([grey(imgOpen(path)) for path in paths])

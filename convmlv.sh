@@ -779,6 +779,24 @@ evalConf() {
 					
 					if [ ! -f $LUT_PATH ]; then invOption "Invalid LUT Path: ${LUT_PATH}"; fi
 					
+					#Check LUT_SIZE
+					i=0
+					while read line; do
+						sLine=$(echo $line | sed -e 's/^[ \t]*//')
+						if [[ $(echo $sLine | cut -c1-11) == "LUT_3D_SIZE" ]]; then
+							if [[ $(echo $sLine | cut -c13-) -le 64 && $(echo $sLine | cut -c13-) -ge 2 ]]; then
+								break
+							else
+								size=$(echo $sLine | cut -c13-)
+								invOption "$(basename $LUT_PATH): Invalid LUT Size of $size x $size x $size - Must be between x2 and x64 (you can resize using pylut - see 'convmlv -h') ! "
+							fi
+						elif [[ $i -gt 20 ]]; then
+							invOption "$(basename $LUT_PATH): Invalid LUT - LUT_3D_SIZE not found in first 20 non-commented lines."
+						fi
+						
+						if [[ ! $(echo $sLine | cut -c1-1) == "#" ]]; then ((i++)); fi
+					done < $LUT_PATH
+					
 					LUTS+=( "lut3d=${LUT_PATH}" )
 					lutDesc="3D LUTs"
 					FFMPEG_FILTERS=true
@@ -1141,8 +1159,26 @@ parseArgs() { #Amazing new argument parsing!!!
 			l)
 				LUT_PATH=${OPTARG}
 				
-				if [ ! -f $LUT_PATH ]; then invOption "l: Invalid LUT Path: ${LUT_PATH}"; fi
+				if [ ! -f $LUT_PATH ]; then invOption "Invalid LUT Path: ${LUT_PATH}"; fi
+				
+				#Check LUT_SIZE
+				i=0
+				while read line; do
+					sLine=$(echo $line | sed -e 's/^[ \t]*//')
+					if [[ $(echo $sLine | cut -c1-11) == "LUT_3D_SIZE" ]]; then
+						if [[ $(echo $sLine | cut -c13-) -le 64 && $(echo $sLine | cut -c13-) -ge 2 ]]; then
+							break
+						else
+							size=$(echo $sLine | cut -c13-)
+							invOption "$(basename $LUT_PATH): Invalid LUT Size of $size x $size x $size - Must be between x2 and x64 (you can resize using pylut - see 'convmlv -h') ! "
+						fi
+					elif [[ $i -gt 20 ]]; then
+						invOption "$(basename $LUT_PATH): Invalid LUT - LUT_3D_SIZE not found in first 20 non-commented lines."
+					fi
 					
+					if [[ ! $(echo $sLine | cut -c1-1) == "#" ]]; then ((i++)); fi
+				done < $LUT_PATH
+				
 				LUTS+=( "lut3d=${LUT_PATH}" )
 				lutDesc="3D LUTs"
 				FFMPEG_FILTERS=true
@@ -1522,7 +1558,7 @@ for ARG in "${FILE_ARGS_ITER[@]}"; do #Go through FILE_ARGS_ITER array, copied f
 	else
 		V_FILTERS_PROX="-vf ${FINAL_SCALE}"
 	fi
-
+	
 #Potentially Print Settings
 	if [ $SETTINGS_OUTPUT == true ]; then
 		if [ $EXT == "MLV" ] || [ $EXT == "mlv" ]; then
@@ -2189,7 +2225,7 @@ for ARG in "${FILE_ARGS_ITER[@]}"; do #Go through FILE_ARGS_ITER array, copied f
 				tConvert "$tmpFiltered" "$IO" "$FMT" "$FMT" # "/home/sofus/subhome/src/convmlv/color/lin_xyz--srgb_srgb.icc" - profile application didn't work...
 			}
 			
-			if [ $IMG_FMT == "exr" ]; then
+			if [[ $IMG_FMT == "exr" ]]; then
 				echo -e "Note: EXR filtering lags due to middle-step conversion (ffmpeg has no EXR encoder).\n"
 				
 				img_res=$(identify ${SEQ}/${TRUNC_ARG}_$(printf "%06d" $(echo "$FRAME_START" | bc)).${IMG_FMT} | cut -d$' ' -f3)

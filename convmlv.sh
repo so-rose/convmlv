@@ -706,13 +706,19 @@ evalConf() {
 							COLOR_GAMMA="cineon" #Cineon
 						;;
 						"3")
-							COLOR_GAMMA="clog2" #C-Log2
+							COLOR_GAMMA="clog2" #C-Log2. Req: color-ext.
 						;;
 						"4")
-							COLOR_GAMMA="slog3" #S-Log3
+							COLOR_GAMMA="slog3" #S-Log3. Req: color-ext.
 						;;
+						#~ "5")
+							#~ COLOR_GAMMA="logc" #LogC 4.X . Req: color-ext.
+						#~ ;;
+						#~ "6")
+							#~ COLOR_GAMMA="acescc" #ACEScc Log Gamma. Req: color-aces.
+						#~ ;;
 						*)
-							invOption "Invalid Gamma Choice: ${mode}"
+							invOption "g: Invalid Gamma Choice: ${mode}"
 						;;
 					esac
 				;;
@@ -730,19 +736,25 @@ evalConf() {
 							COLOR_GAMUT="rec709" #Rec.709
 						;;
 						"3")
-							COLOR_GAMUT="xyz" #XYZ
+							COLOR_GAMUT="xyz" #XYZ. Linear Only.
 						;;
+						#~ "3")
+							#~ COLOR_GAMUT="aces" #ACES. Standard is Linear. Req: color-aces (all gammas will work, even without color-ext)/
+						#~ ;;
+						#~ "4")
+							#~ COLOR_GAMUT="xyz" #ACES. Standard is Linear. Req: color-aces (all gammas will work, even without color-ext)/
+						#~ ;;
 						"4")
-							COLOR_GAMUT="rec2020" #Rec.2020
+							COLOR_GAMUT="rec2020" #Rec.2020. Req: color-ext.
 						;;
 						"5")
-							COLOR_GAMUT="dcip3" #DCI-P3
+							COLOR_GAMUT="dcip3" #DCI-P3. Req: color-ext.
 						;;
 						"6")
-							COLOR_GAMUT="ssg3c" #Sony S-Gamut3.cine
+							COLOR_GAMUT="ssg3c" #Sony S-Gamut3.cine. Req: color-ext.
 						;;
 						*)
-							invOption "Invalid Gamut Choice: ${mode}"
+							invOption "G: Invalid Gamut Choice: ${mode}"
 						;;
 					esac
 				;;
@@ -1717,7 +1729,7 @@ for ARG in "${FILE_ARGS_ITER[@]}"; do #Go through FILE_ARGS_ITER array, copied f
 		
 		setRange
 		
-		i=0
+		i=1
 		for dng in $ARG/*.dng; do
 			cp $dng $(printf "${TMP}/${TRUNC_ARG}_%06d.dng" $i)
 			let i++

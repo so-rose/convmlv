@@ -1061,11 +1061,17 @@ parseArgs() { #Amazing new argument parsing!!!
 						COLOR_GAMMA="cineon" #Cineon
 					;;
 					"3")
-						COLOR_GAMMA="clog2" #C-Log2
+						COLOR_GAMMA="clog2" #C-Log2. Req: color-ext.
 					;;
 					"4")
-						COLOR_GAMMA="slog3" #S-Log3
+						COLOR_GAMMA="slog3" #S-Log3. Req: color-ext.
 					;;
+					#~ "5")
+						#~ COLOR_GAMMA="logc" #LogC 4.X . Req: color-ext.
+					#~ ;;
+					#~ "6")
+						#~ COLOR_GAMMA="acescc" #ACEScc Log Gamma. Req: color-aces.
+					#~ ;;
 					*)
 						invOption "g: Invalid Gamma Choice: ${mode}"
 					;;
@@ -1085,16 +1091,19 @@ parseArgs() { #Amazing new argument parsing!!!
 						COLOR_GAMUT="rec709" #Rec.709
 					;;
 					"3")
-						COLOR_GAMUT="xyz" #XYZ
+						COLOR_GAMUT="xyz" #XYZ. Linear Only.
 					;;
+					#~ "4")
+						#~ COLOR_GAMUT="aces" #ACES. Standard is Linear. Req: color-aces (all gammas will work, even without color-ext)/
+					#~ ;;
 					"4")
-						COLOR_GAMUT="rec2020" #Rec.2020
+						COLOR_GAMUT="rec2020" #Rec.2020. Req: color-ext.
 					;;
 					"5")
-						COLOR_GAMUT="dcip3" #DCI-P3
+						COLOR_GAMUT="dcip3" #DCI-P3. Req: color-ext.
 					;;
 					"6")
-						COLOR_GAMUT="ssg3c" #Sony S-Gamut3.cine
+						COLOR_GAMUT="ssg3c" #Sony S-Gamut3.cine. Req: color-ext.
 					;;
 					*)
 						invOption "G: Invalid Gamut Choice: ${mode}"
@@ -1333,6 +1342,8 @@ checkDeps() {
 			#Check SATPOINT
 			#Check WHITE_SPD
 			#Check BADPIXEL_PATH
+			#Check LUT size.
+			#badpixel info.
 }
 
 bold() {
@@ -1470,8 +1481,13 @@ for ARG in "${FILE_ARGS_ITER[@]}"; do #Go through FILE_ARGS_ITER array, copied f
 
 	#We define what "STANDARD" means. Gamma 2.2 if it's not specifically defined.
 	if [[ $COLOR_GAMUT != "xyz" ]]; then
+	
+		#~ if [[ $COLOR_GAMUT == "aces" ]]; then #List of Linear Only gamuts. XYZ excluded, in that that's default output; no filtering needed.
+			#~ COLOR_GAMMA="lin"
+		#~ fi
+	
 		if [[ $COLOR_GAMMA == "STANDARD" ]]; then
-			if [[ $COLOR_GAMUT == "argb" || $COLOR_GAMUT == "ssg3c" ]]; then
+			if [[ $COLOR_GAMUT == "argb" || $COLOR_GAMUT == "ssg3c" ]]; then #List of gamuts with Gamma 2.2 .
 				COLOR_GAMMA="y2*2"
 			else
 				COLOR_GAMMA=$COLOR_GAMUT
@@ -1601,7 +1617,7 @@ for ARG in "${FILE_ARGS_ITER[@]}"; do #Go through FILE_ARGS_ITER array, copied f
 			#Some error checking - out of range values default to start and end.
 			
 			if [[ $FRAME_END -gt $FRAMES || $FRAME_END -lt $FRAME_START || $FRAME_END -lt 1 ]]; then FRAME_END=$FRAMES; fi
-			if [[ $FRAME_START -lt 1 || $FRAME_START -ge $FRAME_END ]]; then FRAME_START=1; fi
+			if [[ $FRAME_START -lt 1 || $FRAME_START -gt $FRAME_END ]]; then FRAME_START=1; fi
 			
 			FRAME_RANGE="${FRAME_START}-${FRAME_END}"
 		fi
@@ -2047,19 +2063,24 @@ for ARG in "${FILE_ARGS_ITER[@]}"; do #Go through FILE_ARGS_ITER array, copied f
 		#~ cat $PIPE | tr 'e' 'a' & echo 'hello' | tee $PIPE | tr 'e' 'o' #The magic of simultaneous execution ^_^
 	}
 	
-	img_par() { #Takes 22 arguments: {} 2$DEMO_MODE 3$FOUR_COLOR 4$BADPIXELS 5$WHITE 6$HIGHLIGHT_MODE 7$GAMMA 8$WAVE_NOISE 9$DEPTH 10$SEQ 11$TRUNC_ARG 12$IMG_FMT 13$FRAME_END 14$DEPTH_OUT 15$COMPRESS 16$isJPG 17$PROXY_SCALE 18$PROXY 19$BLACK_LEVEL 20$SPACE 21$SATPOINT 22$DCRAW
+	img_par() { #Takes 22 arguments: {} 2$DEMO_MODE 3$FOUR_COLOR 4$BADPIXELS 5$WHITE 6$HIGHLIGHT_MODE 7$GAMMA 8$WAVE_NOISE 9$DEPTH 10$SEQ 11$TRUNC_ARG 12$IMG_FMT 13$FRAME_END 14$DEPTH_OUT 15$COMPRESS 16$isJPG 17$PROXY_SCALE 18$PROXY 19$BLACK_LEVEL 20$SPACE 21$SATPOINT 22$DCRAW 23$FFMPEG_FILTERS
 		count=$(echo $(echo $1 | rev | cut -d "_" -f 1 | rev | cut -d "." -f 1 | grep "[0-9]") | bc) #Instead of count from file, count from name!
 		DCRAW=${22}
+		
+		DPXHACK=""
+		if [[ ${12^^} == "DPX" && ( ${23} == false ) ]]; then DPXHACK="-colorspace sRGB"; else DPXHACK=""; fi
+		#Trust me, I've tried everything else; but this sRGB transform works. Must be an IM bug. Keep an eye on it!
+		#The sRGB curve is only applied if going to DPX while DPX is the target image format. Aka. At the end; not in the middle.
 			
 		if [ ${16} == true ]; then
 			$DCRAW -c -q $2 $3 $4 $5 -H $6 -k ${19} ${21} -g $7 $8 -o ${20} $9 $1 | \
-				tee >(convert ${14} - -set colorspace RGB ${15} $(printf "${10}/${11}_%06d.${12}" ${count})) | \
+				tee >(convert ${14} - -set colorspace RGB ${DPXHACK} ${15} $(printf "${10}/${11}_%06d.${12}" ${count})) | \
 					convert - -set colorspace XYZ -quality 80 -colorspace sRGB -resize ${17} $(printf "${18}/${11}_%06d.jpg" ${count})
 					#JPGs don't get ffmpeg filters applied. They simply can't handle it.
 			echo -e "\e[2K\rDNG to ${12^^}/JPG: Frame ${count^^}/${13}\c"
 		else
 			$DCRAW -c -q $2 $3 $4 $5 -H $6 -k ${19} ${21} -g $7 $8 -o ${20} $9 $1 | \
-				convert ${14} - -set colorspace RGB ${15} $(printf "${10}/${11}_%06d.${12}" ${count})
+				convert ${14} - -set colorspace RGB ${DPXHACK} ${15} $(printf "${10}/${11}_%06d.${12}" ${count})
 			echo -e "\e[2K\rDNG to ${12^^}: Frame ${count^^}/${13}\c"
 		fi
 	}
@@ -2100,7 +2121,7 @@ for ARG in "${FILE_ARGS_ITER[@]}"; do #Go through FILE_ARGS_ITER array, copied f
 #Convert all the actual DNGs to IMG_FMT, in parallel.
 		find "${TMP}" -maxdepth 1 -name '*.dng' -print0 | sort -z | xargs -0 -I {} -P $THREADS -n 1 \
 			bash -c "img_par '{}' '$DEMO_MODE' '$FOUR_COLOR' '$BADPIXELS' '$WHITE' '$HIGHLIGHT_MODE' '$GAMMA' '$WAVE_NOISE' '$DEPTH' \
-			'$SEQ' '$TRUNC_ARG' '$IMG_FMT' '$FRAME_END' '$DEPTH_OUT' '$COMPRESS' '$isJPG' '$PROXY_SCALE' '$PROXY' '$BLACK_LEVEL' '$SPACE' '$SATPOINT' '$DCRAW'"
+			'$SEQ' '$TRUNC_ARG' '$IMG_FMT' '$FRAME_END' '$DEPTH_OUT' '$COMPRESS' '$isJPG' '$PROXY_SCALE' '$PROXY' '$BLACK_LEVEL' '$SPACE' '$SATPOINT' '$DCRAW' '$FFMPEG_FILTERS'"
 		
 		# Removed  | cut -d '' -f $FRAME_RANGE , as this happens when creating the DNGs in the first place.
 
@@ -2221,11 +2242,9 @@ for ARG in "${FILE_ARGS_ITER[@]}"; do #Go through FILE_ARGS_ITER array, copied f
 		#Use images if available, as opposed to developing the files again.
 		if [[ $MOVIE == true && $isH264 == true ]]; then
 			echo -e "\e[1m${TRUNC_ARG}:\e[0m Encoding to ProRes/H.264..."
-			mov_main_img & PIDMAIN=$!
-			mov_prox_img & PIDPROX=$!
-			
-			wait $PIDMAIN
-			wait $PIDPROX
+			mov_main_img &
+			mov_prox_img &
+			wait
 			
 			echo ""
 		elif [[ $MOVIE == true && $isH264 == false ]]; then

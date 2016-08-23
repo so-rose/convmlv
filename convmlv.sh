@@ -4,6 +4,7 @@
 #~ HIGH PRIORITY
 #~ --> Retest Darkframe subtraction with preaveraged/naked darkframe MLVs.
 #~ --> More LUTs - ACES, LogC
+#~ --> More error checking.
 #~ --> Flawless Mac Compatibility.
 #~ --> Documentation: PDF and Videos.
 

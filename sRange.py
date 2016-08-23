@@ -28,7 +28,7 @@ import sys
 	
 def spSeq(seq, outLen) :
 	perfSep = (1/outLen) * len(seq)
-	return list(filter(len, [seq[round(perfSep * i):round(perfSep * (i + 1))] for i in range(len(seq))]))
+	return list(filter(len, [seq[round(perfSep * i):round(perfSep * (i + 1))] for i in range(len(seq))])) if len(seq) > 1 else seq
 	
 def splitThreadRange(inNum, inThreads) :
 	return [str(l[0]) + '-' + str(l[-1]) for l in spSeq(list(range(inNum)), inThreads)]

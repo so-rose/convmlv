@@ -46,15 +46,38 @@
 #~ SOFTWARE.
 
 #BASIC VARS
-VERSION="2.0.0" #Version string.
+VERSION="2.0.1" #Version string.
 INPUT_ARGS=$(echo "$@") #The original input argument string.
 
 if [[ $OSTYPE == "linux-gnu" ]]; then
 	THREADS=$(cat /proc/cpuinfo | awk '/^processor/{print $3}' | tail -1)
+elif [[ $OSTYPE == "darwin11" ]]; then
+	THREADS=$(sysctl -n hw.ncpu)
 else
 	THREADS=4
 fi
-#sysctl -n hw.ncpu for Mac?
+
+readlinkFMac() {
+#We have a replica of readlink -f for macs everywhere!
+	target=$1
+
+	cd `dirname $target`
+	target=`basename $target`
+
+	# Iterate down a (possible) chain of symlinks
+	while [ -L "$target" ]; do
+		target=`readlink $target`
+		cd `dirname $target`
+		target=`basename $target`
+	done
+
+	# Compute the canonicalized name by finding the physical path
+	# for the directory we're in and appending the target file.
+	phys=`pwd -P`
+	res=$phys/$target
+	echo $res
+
+}
 
 setPaths() { #Repends on RES_PATH and PYTHON. Run this function if either is changed.
 	MLV_DUMP="${RES_PATH}/mlv_dump" #Path to mlv_dump location.
@@ -80,6 +103,8 @@ setDefaults() { #Set all the default variables. Run here, and also after each AR
 	PIP_DEPS="numpy tifffile" #You don't need Pillow. That's just to make balance.py a bit more portable.
 	MAN_DEPS="mlv_dump raw2dng cr2hdr mlv2badpixels.sh balance.py sRange.py color-core"
 	if [[ $OSTYPE == "linux-gnu" ]]; then
+		PYTHON="python3"
+	elif [[ $OSTYPE == "darwin11" ]]; then
 		PYTHON="python3"
 	else
 		PYTHON="python"
@@ -192,19 +217,19 @@ setDefaults() { #Set all the default variables. Run here, and also after each AR
 setDefaults #Run now, but also later.
 
 cVal() {
-	echo -e "\e[1m\e[37m${1}\e[0m"
+	echo -e "\033[1m\033[37m${1}\033[0m"
 }
 
 bVal() {
-	echo -e "\e[1m\e[32m${1}\e[0m"
+	echo -e "\033[1m\033[32m${1}\033[0m"
 }
 
 head() {
-	echo -e "\e[1m${1}\e[0m"
+	echo -e "\033[1m${1}\033[0m"
 }
 
 iVal() {
-	echo -e "\e[1m\e[33m${1}\e[0m"
+	echo -e "\033[1m\033[33m${1}\033[0m"
 }
 
 help() {
@@ -451,32 +476,32 @@ $(head "COLOR MANAGEMENT:")
 $(head "CONFIG FILE:")
 	Config files, another way to specify options, can save you time & lend you convenience in production situations.
 	
-	$(echo -e "\e[1mGLOBAL\e[0m"): $HOME/convmlv.conf
-	$(echo -e "\e[1mLOCAL\e[0m"): Specify -C/--config.
+	$(echo -e "\033[1mGLOBAL\033[0m"): $HOME/convmlv.conf
+	$(echo -e "\033[1mLOCAL\033[0m"): Specify -C/--config.
 	
 	
-	$(echo -e "\e[1mSYNTAX:\e[0m")
+	$(echo -e "\033[1mSYNTAX:\033[0m")
 		Most options listed above have an uppercased VARNAME, ex. OUTDIR. You can specify such options in config files, as such:
 		
 			<VARNAME> <VALUE>
 			
 		One option per line only. Indentation by tabs or spaces is allowed, but not enforced.
 			
-		$(echo -e "\e[1mComments\e[0m") Lines starting with # are comments.
+		$(echo -e "\033[1mComments\033[0m") Lines starting with # are comments.
 		
 		You may name a config using:
 		
 			CONFIG_NAME <name>
 			
-		$(echo -e "\e[1mFlags\e[0m") If the value is a true/false flag (ex. IMAGE), simply specifying VARNAME is enough. There is no VALUE.
+		$(echo -e "\033[1mFlags\033[0m") If the value is a true/false flag (ex. IMAGE), simply specifying VARNAME is enough. There is no VALUE.
 	
-	$(echo -e "\e[1mOPTION ORDER OF PRECEDENCE\e[0m") Options override each other as such:
+	$(echo -e "\033[1mOPTION ORDER OF PRECEDENCE\033[0m") Options override each other as such:
 		-LOCAL options overwrite GLOBAL options.
 		-COMMAND LINE options overwrite LOCAL & GLOBAL options.
 		-FILE SPECIFIC options overwrite ALL ABOVE options.
 	
 	
-	$(echo -e "\e[1mFile-Specific Block\e[0m"): A LOCAL config file lets you specify options for specific input names:
+	$(echo -e "\033[1mFile-Specific Block\033[0m"): A LOCAL config file lets you specify options for specific input names:
 	
 		/ <TRUNCATED INPUTNAME>
 			...options here will only be 
@@ -504,11 +529,11 @@ mkdirS() {
 			case $ynq in
 				[Yy]* ) echo -e ""; rm -rf $path; mkdir -p $path >/dev/null 2>/dev/null; break
 				;;
-				[Nn]* ) echo -e "\n\e[0;31m\e[1mDirectory ${path} won't be created.\e[0m\n"; cont=true; `$cleanup`; break
+				[Nn]* ) echo -e "\n\033[0;31m\033[1mDirectory ${path} won't be created.\033[0m\n"; cont=true; `$cleanup`; break
 				;;
-				[Qq]* ) echo -e "\n\e[0;31m\e[1mHalting execution. Directory ${path} won't be created.\e[0m\n"; `$cleanup`; exit 1;
+				[Qq]* ) echo -e "\n\033[0;31m\033[1mHalting execution. Directory ${path} won't be created.\033[0m\n"; `$cleanup`; exit 1;
 				;;
-				* ) echo -e "\e[0;31m\e[1mPlease answer yes or no.\e[0m\n"
+				* ) echo -e "\033[0;31m\033[1mPlease answer yes or no.\033[0m\n"
 				;;
 			esac
 		done
@@ -526,9 +551,9 @@ mkdirS() {
 invOption() {
 	str=$1
 	
-	echo -e "\e[0;31m\e[1m${str}\e[0m"
+	echo -e "\033[0;31m\033[1m${str}\033[0m"
 	
-	echo -e "\n\e[1mCleaning Up.\e[0m\n\n"
+	echo -e "\n\033[1mCleaning Up.\033[0m\n\n"
 	
 	#Delete tmp
 	rm -rf $TMP
@@ -542,6 +567,7 @@ evalConf() {
 	CONFIG_NAME="None"
 	
 	if [[ -z $file ]]; then return; fi
+    if [[ ! -f $file ]]; then return; fi
 	
 	fBlock=false #Whether or not we are in a file-specific block.
 	fID="" #The name of the file-specific block we're in.
@@ -552,7 +578,7 @@ evalConf() {
 		if [[ `echo "${line}" | cut -c1-1` == "#" ]]; then continue; fi #Ignore comments
 		
 		if [[ `echo "${line}" | cut -c1-1` == "/" ]]; then
-			if [[ $fBlock == true ]]; then echo -e "\n\e[0;31m\e[1mWARNING: Nested blocks!!!\e[0m"; fi
+			if [[ $fBlock == true ]]; then echo -e "\n\033[0;31m\033[1mWARNING: Nested blocks!!!\033[0m"; fi
 			fBlock=true
 			fID=`echo "${line}" | cut -d$' ' -f2`
 			continue
@@ -1280,9 +1306,9 @@ checkDeps() {
 			down_instr=$4
 			
 			if [[ -z $down_instr ]]; then
-				echo -e "\e[1;31m${type} \e[0;1m${name}\e[1;31m not found! ${exec_instr}.\e[0m"
+				echo -e "\033[1;31m${type} \033[0;1m${name}\033[1;31m not found! ${exec_instr}.\033[0m"
 			else
-				echo -e "\e[1;31m${type} \e[0;1m${name}\e[1;31m not found! ${exec_instr}.\e[0m\n------> ${down_instr}\n"
+				echo -e "\033[1;31m${type} \033[0;1m${name}\033[1;31m not found! ${exec_instr}.\033[0m\n------> ${down_instr}\n"
 			fi
 		}
 		
@@ -1293,29 +1319,30 @@ checkDeps() {
 		fi
 		
 		if [[ ! -d $ARG && ! ( $argExt == "MLV" || $argExt == "mlv" || $argExt == "RAW" || $argExt == "raw" ) ]]; then
-			echo -e "\e[0;31m\e[1mFile ${ARG} has invalid extension!\e[0m\n"
+			echo -e "\033[0;31m\033[1mFile ${ARG} has invalid extension!\033[0m\n"
 			let ARGNUM--; continue
 		fi
 		
 		if [[ ( ( ! -f $ARG ) && $(ls -1 ${ARG%/}/*.[Dd][Nn][Gg] 2>/dev/null | wc -l) == 0 ) && ( `folderName ${ARG}` != $argTrunc ) ]]; then
-			echo -e "\e[0;31m\e[1mFolder ${ARG} contains no DNG files!\e[0m\n"
+			echo -e "\033[0;31m\033[1mFolder ${ARG} contains no DNG files!\033[0m\n"
 			let ARGNUM--; continue
 		fi
 		
-		if [ ! -d $ARG ] && [ $(echo $(wc -c ${ARG} | cut -d " " -f1) / 1000 | bc) -lt 1000 ]; then #Check that the file is not too small.
+		if [ ! -d $ARG ] && [[ $(echo $(wc -c ${ARG} | xargs | cut -d " " -f1) / 1000 | bc) -lt 1000 ]]; then #Check that the file is not too small.
 			cont=false
 			while true; do
-				read -p "${ARG} is unusually small at $(echo "$(echo "$(wc -c ${ARG})" | cut -d$' ' -f1) / 1000" | bc)KB. Continue, skip, remove, or quit? [c/s/r/q] " csr
+                #xargs easily trims the cut statement, which has a leading whitespace on Mac.
+				read -p "${ARG} is unusually small at $(echo "$(echo "$(wc -c ${ARG})" | xargs | cut -d$' ' -f1) / 1000" | bc)KB. Continue, skip, remove, or quit? [c/s/r/q] " csr
 				case $csr in
-					[Cc]* ) "\n\e[0;31m\e[1mContinuing.\e[0m\n"; break
+					[Cc]* ) "\n\033[0;31m\033[1mContinuing.\033[0m\n"; break
 					;;
-					[Ss]* ) echo -e "\n\e[0;31m\e[1mSkipping.\e[0m\n"; cont=true; break
+					[Ss]* ) echo -e "\n\033[0;31m\033[1mSkipping.\033[0m\n"; cont=true; break
 					;;
-					[Rr]* ) echo -e "\n\e[0;31m\e[1mRemoving ${ARG}.\e[0m\n"; cont=true; rm $ARG; break
+					[Rr]* ) echo -e "\n\033[0;31m\033[1mRemoving ${ARG}.\033[0m\n"; cont=true; rm $ARG; break
 					;;
-					[Qq]* ) echo -e "\n\e[0;31m\e[1mQuitting.\e[0m\n"; isExit=true; break
+					[Qq]* ) echo -e "\n\033[0;31m\033[1mQuitting.\033[0m\n"; isExit=true; break
 					;;
-					* ) echo -e "\e[0;31m\e[1mPlease answer continue, skip, or remove.\e[0m\n"
+					* ) echo -e "\033[0;31m\033[1mPlease answer continue, skip, or remove.\033[0m\n"
 					;;
 				esac
 			done
@@ -1345,6 +1372,13 @@ checkDeps() {
 		if [[ $(cmdExists "$DCRAW") != true ]]; then
 			nFound "Command" "$DCRAW" "Execution will halt" "dcraw not installed correctly - See Dist Deps in the OPTIONS, INFO section of 'convmlv -h'."
 			isExit=true
+		fi
+		if [[ $(cmdExists "$PYTHON") != true ]]; then
+			nFound "Command" "$PYTHON" "Execution will halt" "Python was not installed correctly. Install version 3.X, or see PYTHON in the OPTIONS, BASIC section of 'convmlv -h' for custom path."
+			isExit=true
+		fi
+		if [[ $(cmdExists "$PYTHON") == true && $($PYTHON -c 'import sys; print(sys.version_info[0])') != 3 ]]; then
+			nFound "Python Version" "3.X" "Execution will halt" "Your python version is $($PYTHON -c "import sys; print('.'.join(str(x) for x in sys.version_info[0:3]))") - convmlv requires 3.X. Typically, you must install the 'python3' package; else you can set set PYTHON in the OPTIONS, BASIC section of 'convmlv -h'."
 		fi
 		if [[ $(cmdExists "convert") != true ]]; then
 			nFound "Command" "convert" "Execution will halt" "ImageMagick not installed correctly - See Dist Deps in the OPTIONS, INFO section of 'convmlv -h'."
@@ -1377,7 +1411,7 @@ checkDeps() {
 		fi
 		
 		if [[ $isExit == true ]]; then
-			echo -e "\e[0;33m\e[1mPlace all downloaded files in RES_PATH - ${RES_PATH} - or give specific paths with the relevant arguments/config VARNAMEs (see 'convmlv -h'). Also, make sure they're executable (run 'chmod +x file').\e[0m\n"
+			echo -e "\033[0;33m\033[1mPlace all downloaded files in RES_PATH - ${RES_PATH} - or give specific paths with the relevant arguments/config VARNAMEs (see 'convmlv -h'). Also, make sure they're executable (run 'chmod +x file').\033[0m\n"
 			exit 1
 		fi
 		
@@ -1396,7 +1430,7 @@ checkDeps() {
 }
 
 bold() {
-	echo -e "\e[1m${1}\e[0m"
+	echo -e "\033[1m${1}\033[0m"
 }
 
 folderName() {
@@ -1481,7 +1515,7 @@ dngSet() { #Set as many options as the RAW spec will allow. Grey out the rest.
 }
 
 if [ $# == 0 ]; then
-	echo -e "\e[0;31m\e[1mNo arguments given.\e[0m\n\tType 'convmlv -h/--help' to see help page, or 'convmlv -v/--version' for current version string."
+	echo -e "\033[0;31m\033[1mNo arguments given.\033[0m\n\tType 'convmlv -h/--help' to see help page, or 'convmlv -v/--version' for current version string."
 fi
 
 
@@ -1508,7 +1542,9 @@ IFS=' ' read -r -a FILE_ARGS_ITER <<< $FILE_ARGS #Need to make it an array, for 
 trap "rm -rf ${TMP}; exit 1" INT #TMP will be removed if you CTRL+C.
 for ARG in "${FILE_ARGS_ITER[@]}"; do #Go through FILE_ARGS_ITER array, copied from parsed $@ because $@ is going to be changing on 'set --'
 	if [[ $OSTYPE == "linux-gnu" ]]; then
-		ARG="$(readlink -f $ARG)"  >/dev/null 2>/dev/null #Relative ARG only fixed on Linux, as readlink only exists in UNIX. Mac variant?	
+		ARG="$(readlink -f $ARG)"  >/dev/null 2>/dev/null #Relative ARG fixed properly on Linux, as readlink only exists in UNIX.
+	elif [[ $OSTYPE == "darwin11" ]]; then
+		ARG="$(readlinkFMac $ARG)"  >/dev/null 2>/dev/null #Mac relative OUTDIR uses the special readlinkFMac :)
 	fi
 	
 #The Very Basics
@@ -1553,7 +1589,7 @@ for ARG in "${FILE_ARGS_ITER[@]}"; do #Go through FILE_ARGS_ITER array, copied f
 		done
 		
 		if [[ $COLOR_VF == "" ]]; then
-			echo -e "\e[0;31m\e[1mSpecified LUT not found! Is color-ext loaded?.\e[0m\n"
+			echo -e "\033[0;31m\033[1mSpecified LUT not found! Is color-ext loaded?.\033[0m\n"
 		fi
 			
 	fi #COLOR_VF is nothing if the gamut is xyz - it'll pass directly out of dcraw/IM, without LUT application.
@@ -1578,19 +1614,19 @@ for ARG in "${FILE_ARGS_ITER[@]}"; do #Go through FILE_ARGS_ITER array, copied f
 			# Read the header for interesting settings :) .
 			mlvSet
 			
-			echo -e "\n\e[1m\e[0;32m\e[1mFile\e[0m: ${ARG}\n"
+			echo -e "\n\033[1m\033[0;32m\033[1mFile\033[0m: ${ARG}\n"
 			prntSet
 			continue
 		elif [ $EXT == "RAW" ] || [ $EXT == "raw" ]; then
 			rawSet
 			
-			echo -e "\n\e[1m\e[0;32m\e[1mFile\e[0m\e[0m: ${ARG}\n"
+			echo -e "\n\033[1m\033[0;32m\033[1mFile\033[0m\033[0m: ${ARG}\n"
 			prntSet
 			continue
 		elif [ -d $ARG ]; then
 			dngSet
 			
-			echo -e "\n\e[1m\e[0;32m\e[1mFile\e[0m\e[0m: ${ARG}\n"
+			echo -e "\n\033[1m\033[0;32m\033[1mFile\033[0m\033[0m: ${ARG}\n"
 			prntSet
 			continue
 		else
@@ -1600,9 +1636,9 @@ for ARG in "${FILE_ARGS_ITER[@]}"; do #Go through FILE_ARGS_ITER array, copied f
 	fi
 	
 	if [[ $MK_DARK == true ]]; then 
-		echo -e "\n\e[1m\e[0;32m\e[1mAveraging Darkframe File\e[0m: ${ARG}"
+		echo -e "\n\033[1m\033[0;32m\033[1mAveraging Darkframe File\033[0m: ${ARG}"
 		$MLV_DUMP -o $DARK_OUT $ARG 2>/dev/null 1>/dev/null
-		echo -e "\n\e[1m\e[1mWrote Darkframe File\e[0m: ${DARK_OUT}\n"
+		echo -e "\n\033[1m\033[1mWrote Darkframe File\033[0m: ${DARK_OUT}\n"
 		continue
 	fi
 	
@@ -1619,26 +1655,28 @@ for ARG in "${FILE_ARGS_ITER[@]}"; do #Go through FILE_ARGS_ITER array, copied f
 		
 		if [ -z "${list}" ]; then
 			if [[ $itemBase == $(basename $ARG) ]]; then
-				list="${itemDir}/\e[1m\e[32m${itemBase%.*}\e[0m${itemExt}"
+				list="${itemDir}/\033[1m\033[32m${itemBase%.*}\033[0m${itemExt}"
 			else
-				list="${itemDir}/\e[1m${itemBase%.*}\e[0m${itemExt}"
+				list="${itemDir}/\033[1m${itemBase%.*}\033[0m${itemExt}"
 			fi
 		else
-			list="${list}, ${itemDir}/\e[1m${itemBase%.*}\e[0m${itemExt}"
+			list="${list}, ${itemDir}/\033[1m${itemBase%.*}\033[0m${itemExt}"
 		fi
 	done
 	
 	if [ $ARGNUM == 1 ]; then
-		echo -e "\n\e[1m${ARGNUM} File Left to Process:\e[0m ${list}\n"
+		echo -e "\n\033[1m${ARGNUM} File Left to Process:\033[0m ${list}\n"
 	else
-		echo -e "\n\e[1m${ARGNUM} Files Left to Process:\e[0m ${list}\n"
+		echo -e "\n\033[1m${ARGNUM} Files Left to Process:\033[0m ${list}\n"
 	fi
 
 #PREPARATION
 
 #Establish Basic Directory Structure.
 	if [[ $OSTYPE == "linux-gnu" ]]; then
-		OUTDIR="$(readlink -f $OUTDIR)"  >/dev/null 2>/dev/null #Relative Badpixel OUTDIR only fixed on Linux, as readlink only exists in UNIX. Mac variant?
+		OUTDIR="$(readlink -f $OUTDIR)"  >/dev/null 2>/dev/null #Relative Badpixel OUTDIR fixed properly on Linux.
+	elif [[ $OSTYPE == "darwin11" ]]; then
+		ARG="$(readlinkFMac $OUTDIR)"  >/dev/null 2>/dev/null #Mac relative OUTDIR uses the special readlinkFMac :)
 	fi
 	
 	if [ $OUTDIR != $PWD ] && [ $isOutGen == false ]; then
@@ -1675,7 +1713,7 @@ for ARG in "${FILE_ARGS_ITER[@]}"; do #Go through FILE_ARGS_ITER array, copied f
 #DNG argument, reused or not. Also, create FILE and TMP.
 	DEVELOP=true
 	if [[ ( -d $ARG ) && ( ( `basename ${ARG} | cut -c1-3` == "dng" && -f "${ARG}/../settings.txt" ) || ( `basename ${ARG}` == $TRUNC_ARG && -f "${ARG}/settings.txt" ) ) ]]; then #If we're reusing a dng sequence, copy over before we delete the original.
-		echo -e "\e[1m${TRUNC_ARG}:\e[0m Moving DNGs from previous run...\n" #Use prespecified DNG sequence.
+		echo -e "\033[1m${TRUNC_ARG}:\033[0m Moving DNGs from previous run...\n" #Use prespecified DNG sequence.
 		
 		#User may specify either the dng_ or the trunc_arg folder; must account for both.
 		if [[ `folderName ${ARG}` == $TRUNC_ARG && -d "${ARG}/dng_${TRUNC_ARG}" ]]; then #Accounts for the trunc_arg folder.
@@ -1683,7 +1721,7 @@ for ARG in "${FILE_ARGS_ITER[@]}"; do #Go through FILE_ARGS_ITER array, copied f
 		elif [[ `folderName ${ARG}` == $TRUNC_ARG && `echo "$(basename ${ARG})" | cut -c 1-3` == "dng" ]]; then #Accounts for the dng_ folder.
 			TRUNC_ARG=`echo $TRUNC_ARG | cut -c5-${#TRUNC_ARG}`
 		else
-			echo -e "\e[0;31m\e[1mCannot reuse - DNG folder does not exist! Skipping argument.\e[0m"
+			echo -e "\033[0;31m\033[1mCannot reuse - DNG folder does not exist! Skipping argument.\033[0m"
 			continue
 		fi
 		
@@ -1726,7 +1764,7 @@ for ARG in "${FILE_ARGS_ITER[@]}"; do #Go through FILE_ARGS_ITER array, copied f
 		mkdirS $FILE
 		mkdirS $TMP
 		
-		echo -e "\e[1m${TRUNC_ARG}:\e[0m Using specified folder of RAW sequences...\n" #Use prespecified DNG sequence.
+		echo -e "\033[1m${TRUNC_ARG}:\033[0m Using specified folder of RAW sequences...\n" #Use prespecified DNG sequence.
 		
 		setRange
 		
@@ -1750,7 +1788,7 @@ for ARG in "${FILE_ARGS_ITER[@]}"; do #Go through FILE_ARGS_ITER array, copied f
 	
 #Darkframe Averaging
 	if [[ $useDF == true ]]; then
-		echo -e "\e[1m${TRUNC_ARG}:\e[0m Creating darkframe for subtraction...\n"
+		echo -e "\033[1m${TRUNC_ARG}:\033[0m Creating darkframe for subtraction...\n"
 		
 		avgFrame="${TMP}/avg.darkframe" #The path to the averaged darkframe file.
 		
@@ -1771,7 +1809,7 @@ for ARG in "${FILE_ARGS_ITER[@]}"; do #Go through FILE_ARGS_ITER array, copied f
 
 #Develop sequence if needed.
 	if [ $DEVELOP == true ]; then
-		echo -e "\e[1m${TRUNC_ARG}:\e[0m Dumping to DNG Sequence...\n"
+		echo -e "\033[1m${TRUNC_ARG}:\033[0m Dumping to DNG Sequence...\n"
 				
 		if [ ! $DARKFRAME == "" ] && [ ! $CHROMA_SMOOTH == "--no-cs" ]; then #Just to let the user know that certain features are impossible with RAW.
 			rawStat="*Skipping Darkframe subtraction and Chroma Smoothing for RAW file ${TRUNC_ARG}."
@@ -1838,7 +1876,7 @@ for ARG in "${FILE_ARGS_ITER[@]}"; do #Go through FILE_ARGS_ITER array, copied f
 						if [[ $cur == $lastCur ]] || [[ $cur -gt $end ]] || [[ $cur -lt $start ]]; then continue; fi #Turns out, it goes through all the frames, even if cutting the frame range. So, clamp it!
 						
 						lastCur=$cur #It likes to repeat itself.
-						echo -e "\e[2K\rMLV to DNG: Frame $(echo "${cur} + ${10}" | bc)/${8}\c" #Print out beautiful progress bar, in parallel!
+						echo -e "\033[2K\rMLV to DNG: Frame $(echo "${cur} + ${10}" | bc)/${8}\c" #Print out beautiful progress bar, in parallel!
 					done
 					
 				} #Progress Bar
@@ -1855,7 +1893,7 @@ for ARG in "${FILE_ARGS_ITER[@]}"; do #Go through FILE_ARGS_ITER array, copied f
 					bash -c "devDNG '{}' '$MLV_DUMP' '$REAL_MLV' '$DARK_PROC' 'no_data' '$smooth' '$TMP' '$FRAME_END' '$TRUNC_ARG' '$FRAME_START'"
 			
 			#Since devDNG must run in a subshell, globals don't follow. Must pass *everything* in.
-			echo -e "\e[2K\rMLV to DNG: Frame ${FRAME_END}/${FRAME_END}\c" #Ensure it looks right at the end.
+			echo -e "\033[2K\rMLV to DNG: Frame ${FRAME_END}/${FRAME_END}\c" #Ensure it looks right at the end.
 			echo -e "\n"
 			
 			count=$FRAME_START
@@ -1889,7 +1927,7 @@ for ARG in "${FILE_ARGS_ITER[@]}"; do #Go through FILE_ARGS_ITER array, copied f
 	
 #Create badpixels file.
 	if [ $isBP == true ] && [ $DEVELOP == true ]; then
-		echo -e "\e[1m${TRUNC_ARG}:\e[0m Generating badpixels file...\n"
+		echo -e "\033[1m${TRUNC_ARG}:\033[0m Generating badpixels file...\n"
 		
 		bad_name="badpixels_${TRUNC_ARG}.txt"
 		gen_bad="${TMP}/${bad_name}"
@@ -1903,7 +1941,7 @@ for ARG in "${FILE_ARGS_ITER[@]}"; do #Go through FILE_ARGS_ITER array, copied f
 		
 		if [[ ! -z $BADPIXEL_PATH ]]; then
 			if [ -f "${gen_bad}" ]; then
-				echo -e "\e[1m${TRUNC_ARG}:\e[0m Concatenating with specified badpixels file...\n"
+				echo -e "\033[1m${TRUNC_ARG}:\033[0m Concatenating with specified badpixels file...\n"
 				mv "${gen_bad}" "${TMP}/bp_gen"
 				cp $BADPIXEL_PATH "${TMP}/bp_imp"
 				
@@ -1915,7 +1953,7 @@ for ARG in "${FILE_ARGS_ITER[@]}"; do #Go through FILE_ARGS_ITER array, copied f
 		
 		BADPIXELS="-P ${gen_bad}"
 	elif [[ ! -z $BADPIXEL_PATH ]]; then
-		echo -e "\e[1m${TRUNC_ARG}:\e[0m Using specified badpixels file...\n"
+		echo -e "\033[1m${TRUNC_ARG}:\033[0m Using specified badpixels file...\n"
 		
 		bad_name="badpixels_${TRUNC_ARG}.txt"
 		gen_bad="${TMP}/${bad_name}"
@@ -1926,7 +1964,7 @@ for ARG in "${FILE_ARGS_ITER[@]}"; do #Go through FILE_ARGS_ITER array, copied f
 
 #Dual ISO Conversion
 	if [ $DUAL_ISO == true ]; then
-		echo -e "\e[1m${TRUNC_ARG}:\e[0m Combining Dual ISO...\n"
+		echo -e "\033[1m${TRUNC_ARG}:\033[0m Combining Dual ISO...\n"
 		
 		#Original DNGs will be moved here.
 		oldFiles="${TMP}/orig_dng"
@@ -1941,7 +1979,7 @@ for ARG in "${FILE_ARGS_ITER[@]}"; do #Go through FILE_ARGS_ITER array, copied f
 			mv "${3}/${name%.*}.dng" $5 #Move away original dngs.
 			mv "${3}/${name%.*}.DNG" "${3}/${name%.*}.dng" #Rename *.DNG to *.dng.
 			
-			echo -e "\e[2K\rDual ISO Development: Frame ${count}/${4}\c"
+			echo -e "\033[2K\rDual ISO Development: Frame ${count}/${4}\c"
 		}
 		
 		export -f inc_iso #Must expose function to subprocess.
@@ -1992,7 +2030,7 @@ for ARG in "${FILE_ARGS_ITER[@]}"; do #Go through FILE_ARGS_ITER array, copied f
 	
 #Get White Balance correction factor.
 	if [ $GEN_WHITE == true ]; then
-		echo -e "\e[1m${TRUNC_ARG}:\e[0m Generating WB...\n"
+		echo -e "\033[1m${TRUNC_ARG}:\033[0m Generating WB...\n"
 		
 		#Calculate n, the distance between samples.
 		frameLen=$(echo "$FRAME_END - $FRAME_START + 1" | bc) #Offset by one to avoid division by 0 errors later. min value must be 1.
@@ -2016,7 +2054,7 @@ for ARG in "${FILE_ARGS_ITER[@]}"; do #Go through FILE_ARGS_ITER array, copied f
 				mv "$TMP/${name%.*}.tiff" $toBal #TIFF MOVEMENT. We use TIFFs here because it's easy for dcraw and Python.
 				let t++
 			fi
-			echo -e "\e[2K\rWB Development: Sample ${t}/$(echo "${frameLen} / $n" | bc) (Frame: $(echo "${i} + 1" | bc)/${FRAME_END})\c"
+			echo -e "\033[2K\rWB Development: Sample ${t}/$(echo "${frameLen} / $n" | bc) (Frame: $(echo "${i} + 1" | bc)/${FRAME_END})\c"
 			let i++
 		done
 		echo ""
@@ -2026,7 +2064,7 @@ for ARG in "${FILE_ARGS_ITER[@]}"; do #Go through FILE_ARGS_ITER array, copied f
 		BALANCE=`$BAL $toBal`
 		
 	elif [ $CAMERA_WB == true ]; then
-		echo -e "\e[1m${TRUNC_ARG}:\e[0m Retrieving Camera White Balance..."
+		echo -e "\033[1m${TRUNC_ARG}:\033[0m Retrieving Camera White Balance..."
 		
 		for file in $TMP/*.dng; do
 			#dcraw a single file verbosely, to get the camera multiplier with awk.
@@ -2035,7 +2073,7 @@ for ARG in "${FILE_ARGS_ITER[@]}"; do #Go through FILE_ARGS_ITER array, copied f
 		done
 
 	else #Something must always be set.
-		echo -e "\e[1m${TRUNC_ARG}:\e[0m Ignoring White Balance..."
+		echo -e "\033[1m${TRUNC_ARG}:\033[0m Ignoring White Balance..."
 		
 		BALANCE="1.000000 1.000000 1.000000"
 	fi
@@ -2126,11 +2164,11 @@ for ARG in "${FILE_ARGS_ITER[@]}"; do #Go through FILE_ARGS_ITER array, copied f
 				tee >(convert ${14} - -set colorspace RGB ${DPXHACK} ${15} $(printf "${10}/${11}_%06d.${12}" ${count})) | \
 					convert - -set colorspace XYZ -quality 80 -colorspace sRGB -resize ${17} $(printf "${18}/${11}_%06d.jpg" ${count})
 					#JPGs don't get ffmpeg filters applied. They simply can't handle it.
-			echo -e "\e[2K\rDNG to ${12^^}/JPG: Frame ${count^^}/${13}\c"
+			echo -e "\033[2K\rDNG to ${12^^}/JPG: Frame ${count^^}/${13}\c"
 		else
 			$DCRAW -c -q $2 $3 $4 $5 -H $6 -k ${19} ${21} -g $7 $8 -o ${20} $9 $1 | \
 				convert ${14} - -set colorspace RGB ${DPXHACK} ${15} $(printf "${10}/${11}_%06d.${12}" ${count})
-			echo -e "\e[2K\rDNG to ${12^^}: Frame ${count^^}/${13}\c"
+			echo -e "\033[2K\rDNG to ${12^^}: Frame ${count^^}/${13}\c"
 		fi
 	}
 #~ See http://www.imagemagick.org/discourse-server/viewtopic.php?t=21161
@@ -2142,7 +2180,7 @@ for ARG in "${FILE_ARGS_ITER[@]}"; do #Go through FILE_ARGS_ITER array, copied f
 
 #IMAGE PROCESSING
 	if [ $IMAGES == true ] ; then
-		echo -e "\e[1m${TRUNC_ARG}:\e[0m Processing Image Sequence from Frame ${FRAME_START} to ${FRAME_END}...\n"
+		echo -e "\033[1m${TRUNC_ARG}:\033[0m Processing Image Sequence from Frame ${FRAME_START} to ${FRAME_END}...\n"
 		
 #Define Image Directories, Create SEQ directory
 		SEQ="${FILE}/${IMG_FMT}_${TRUNC_ARG}"
@@ -2175,9 +2213,9 @@ for ARG in "${FILE_ARGS_ITER[@]}"; do #Go through FILE_ARGS_ITER array, copied f
 		# Removed  | cut -d '' -f $FRAME_RANGE , as this happens when creating the DNGs in the first place.
 
 		if [ $isJPG == true ]; then #Make it print "Frame $FRAMES / $FRAMES" as the last output :).
-			echo -e "\e[2K\rDNG to ${IMG_FMT^^}/JPG: Frame ${FRAME_END}/${FRAME_END}\c"
+			echo -e "\033[2K\rDNG to ${IMG_FMT^^}/JPG: Frame ${FRAME_END}/${FRAME_END}\c"
 		else
-			echo -e "\e[2K\rDNG to ${IMG_FMT^^}: Frame ${FRAME_END}/${FRAME_END}\c"
+			echo -e "\033[2K\rDNG to ${IMG_FMT^^}: Frame ${FRAME_END}/${FRAME_END}\c"
 		fi
 		
 		echo -e "\n"
@@ -2194,7 +2232,7 @@ for ARG in "${FILE_ARGS_ITER[@]}"; do #Go through FILE_ARGS_ITER array, copied f
 			conv_par() { # Arguments: 1${} 2$TRUNC_ARG 3$outFolder 4$fromFMT 5$iccProf 6$toFMT 7$DEPTH_OUT 8$compress 9$FRAME_END 10$IMG_FMT
 				count=$(echo $(echo $1 | rev | cut -d "_" -f 1 | rev | cut -d "." -f 1 | grep "[0-9]") | bc) #Get count from filename.
 				
-				echo -e "\e[2K\rMiddle-step: ${4^^} to ${6^^}, Frame ${count^^}/${9}\c"
+				echo -e "\033[2K\rMiddle-step: ${4^^} to ${6^^}, Frame ${count^^}/${9}\c"
 				
 				DPXHACK=""
 				if [[ ${6^^} == "DPX" && ${10^^} == ${6^^} ]]; then DPXHACK="-colorspace sRGB"; else DPXHACK=""; fi
@@ -2224,7 +2262,7 @@ for ARG in "${FILE_ARGS_ITER[@]}"; do #Go through FILE_ARGS_ITER array, copied f
 			mkdir $tmpUnfiltered
 			
 			#Give correct output.
-			echo -e "\e[1mApplying Filters:\e[0m $(joinArgs ", " "${FILTER_ARR[@]}")...\n"
+			echo -e "\033[1mApplying Filters:\033[0m $(joinArgs ", " "${FILTER_ARR[@]}")...\n"
 			
 			applyFilters() { #Ideally, this would be all we need. But alas, ffmpeg + exr is broken.
 				IO=$1
@@ -2268,15 +2306,15 @@ for ARG in "${FILE_ARGS_ITER[@]}"; do #Go through FILE_ARGS_ITER array, copied f
 	fi
 		
 	if [[ $MOVIE == true && $IMAGES == false && $isH264 == true ]]; then
-		echo -e "\e[1m${TRUNC_ARG}:\e[0m Encoding to ProRes/H.264..."
+		echo -e "\033[1m${TRUNC_ARG}:\033[0m Encoding to ProRes/H.264..."
 		runSim dcrawOpt mov_main mov_prox
 		echo ""
 	elif [[ $MOVIE == true && $IMAGES == false && $isH264 == false ]]; then
-		echo -e "\e[1m${TRUNC_ARG}:\e[0m Encoding to ProRes..."
+		echo -e "\033[1m${TRUNC_ARG}:\033[0m Encoding to ProRes..."
 		dcrawOpt | mov_main
 		echo ""
 	elif [[ $MOVIE == false && $IMAGES == false && $isH264 == true ]]; then
-		echo -e "\e[1m${TRUNC_ARG}:\e[0m Encoding to H.264..."
+		echo -e "\033[1m${TRUNC_ARG}:\033[0m Encoding to H.264..."
 		dcrawOpt | mov_prox
 		echo ""
 	elif [[ $IMAGES == true ]]; then
@@ -2290,18 +2328,18 @@ for ARG in "${FILE_ARGS_ITER[@]}"; do #Go through FILE_ARGS_ITER array, copied f
 		
 		#Use images if available, as opposed to developing the files again.
 		if [[ $MOVIE == true && $isH264 == true ]]; then
-			echo -e "\e[1m${TRUNC_ARG}:\e[0m Encoding to ProRes/H.264..."
+			echo -e "\033[1m${TRUNC_ARG}:\033[0m Encoding to ProRes/H.264..."
 			mov_main_img &
 			mov_prox_img &
 			wait
 			
 			echo ""
 		elif [[ $MOVIE == true && $isH264 == false ]]; then
-			echo -e "\e[1m${TRUNC_ARG}:\e[0m Encoding to ProRes..."
+			echo -e "\033[1m${TRUNC_ARG}:\033[0m Encoding to ProRes..."
 			mov_main_img
 			echo ""	
 		elif [[ $MOVIE == false && $isH264 == true ]]; then
-			echo -e "\e[1m${TRUNC_ARG}:\e[0m Encoding to H.264..."
+			echo -e "\033[1m${TRUNC_ARG}:\033[0m Encoding to H.264..."
 			mov_prox_img
 			echo ""
 		fi
@@ -2309,7 +2347,7 @@ for ARG in "${FILE_ARGS_ITER[@]}"; do #Go through FILE_ARGS_ITER array, copied f
 	
 #Potentially move DNGs.
 	if [ $KEEP_DNGS == true ]; then
-		echo -e "\e[1mMoving DNGs...\e[0m"
+		echo -e "\033[1mMoving DNGs...\033[0m"
 		DNG="${FILE}/dng_${TRUNC_ARG}"
 		mkdirS $DNG
 		
@@ -2321,7 +2359,7 @@ for ARG in "${FILE_ARGS_ITER[@]}"; do #Go through FILE_ARGS_ITER array, copied f
 		fi
 	fi
 	
-	echo -e "\n\e[1mCleaning Up.\e[0m\n\n"
+	echo -e "\n\033[1mCleaning Up.\033[0m\n\n"
 	
 #Delete tmp
 	rm -rf $TMP

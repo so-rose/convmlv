@@ -10,6 +10,9 @@
 
 #~ TOP PRIORITY
 #~ --> Fix Color Management; -o 5 is broken. Use -o 0, supplemented by current paradigm of Rec709 -> Whatever LUTs, instead of XYZ -> Whatever LUTs.
+#~ --> MLVFS backend - run the mlvfs command, passing whatever options it supports, then rewrite ARG. Give an option to choose mlv_dump or mlvfs, and an option for a custom path to mlvfs.
+#~ *Consider using dcraw for darkframing, through the -K option. Requires a develop from MLV, then a convert to raw PGM, first.
+#~ --> Darkframe library - place in $HOME/.local/convmlv, perhaps.
 
 #~ HIGH PRIORITY
 #~ --> Retest Darkframe subtraction with preaveraged/naked darkframe MLVs.
@@ -1778,17 +1781,17 @@ for ARG in "${FILE_ARGS_ITER[@]}"; do #Go through FILE_ARGS_ITER array, copied f
 		
 		echo -e "\033[1m${TRUNC_ARG}:\033[0m Using specified folder of RAW sequences...\n" #Use prespecified DNG sequence.
 		
+		FPS=24 #Set it to a safe default.
+		FRAMES=$(find ${ARG} -name "*.dng" | wc -l)
+		
 		setRange
 		
 		i=1
 		for dng in $ARG/*.dng; do
-			cp $dng $(printf "${TMP}/${TRUNC_ARG}_%06d.dng" $i)
+			ln -s $dng $(printf "${TMP}/${TRUNC_ARG}_%06d.dng" $i) #Since we're not touching the DNGs, we can link them from wherever to TMP!!! :) Super duper fast.
 			let i++
 			if [[ i -gt $FRAME_END ]]; then break; fi
 		done
-		
-		FPS=24 #Set it to a safe default.
-		FRAMES=$(find ${TMP} -name "*.dng" | wc -l)
 		
 		dngSet
 		

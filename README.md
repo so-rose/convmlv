@@ -1,10 +1,20 @@
 # convmlv #
 
-MLV/RAW/DNG to Image/Movie and Proxy
+RAW ML Formats to Workable Images/Movies Developer
 =======
+I needed a workflow to provide me full control over development for filmmaking with Magic Lantern (beyond mlrawviewer's excellent preview!), while keeping things simple by providing defaults for everything.
+So, I wrote this: A converter from ML formats (RAW, MLV, DNG sequences) to many usable formats (EXR, DPX, and yes, Prores) with many, many features in between!
+
+Generically, as a DNG developer, it's very capable as well, even if all the ML formats are ignored.
+
+I make shorts with convmlv :D so here's some examples of it (back at v1.7) in action!!
+
+http://youtu.be/yi-G7sXHB1M
+http://youtu.be/yi-G7sXHB1M
+
 See [http://www.magiclantern.fm/forum/index.php?topic=16799.0](http://www.magiclantern.fm/forum/index.php?topic=16799.0) for more info.
 
-**The pdf found in the source, under docs->docs.pdf, is very outdated. Use the help text below.**
+**The pdf found in the source and in the release, under docs->docs.pdf, is up to date. Refer to it for tutorials, tips, documentation, etc.!!**
 
 Full help page is below:
 
@@ -25,7 +35,7 @@ INFO:
 	  
 	It's as simple or complex as you need it to be: 'convmlv -m <mlvfile>.mlv' is enough for good-looking output!
 	
-VERSION: 2.0.0
+VERSION: 2.0.1
 	
 MANUAL DEPENDENCIES:
 	Place these in RES_PATH (see OPTIONS, BASIC). Keep in mind you also need dist. and pip packages.
@@ -294,4 +304,4 @@ Contact me with any feedback or questions at convmlv@sofusrose.com, PM me (so-ro
 
 ```
 
-Run 'sed -r "s/\x1B\[([0-9]{1,2}(;[0-9]{1,2})?)?[m|K]//g" docs/MANPAGE' to strip colors from MANPAGE after generating through less.
+Run 'sed -r "s/\x1B\[([0-9]{1,2}(;[0-9]{1,2})?)?[m|K]//g" docs/MANPAGE' to strip colors from MANPAGE after generating through less. This is done automatically in 'docs/buildDocs.sh.

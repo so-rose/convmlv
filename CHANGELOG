@@ -1,4 +1,6 @@
 [code]
+
+
 [b]v2.0.0[/b]: I think convmlv is the stablest it's ever been! Though I'm sure there's plenty more bugs to discover :).
 [size=8pt]*Color Management: Real, 3D LUT-based gamma/gamut choices! See -g/-G. There is now minimal quality loss from sensor to image. Adds a dependency: color-core. [/size]
 [size=8pt]*Extra Colorspaces: Add extra colorspace options with the optional dependency color-ext - it gives logspace, wide-gamut, etc. options. It's not yet complete - stay tuned![/size]

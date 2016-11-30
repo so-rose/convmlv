@@ -13,7 +13,7 @@
 }
 
 \author{\textit{by Sofus Rose}}
-\title{\textbf{Using convmlv 1.7.1} \\ {\large Developing Magic Lantern footage with ease}}
+\title{\textbf{Using convmlv 2.0.1} \\ {\large Developing Magic Lantern footage with ease}}
 %^^^ Title \\ Subtitle. Subtitle is \large, as opposed to \huge.{}
 
 \begin{document}
@@ -23,61 +23,137 @@
 \newpage
 
 \section{Introduction}
-	Processing the output of Magic Lantern for maximum quality is a technical balancing act that most don't want to deal with. Even if you
-	do, it's often tedious, \textit{especially} on Linux. convmlv aims to make the development of MLV, RAW, and even DNG sequences as easy as
-	possible without compromising quality, whilst exposing as much depth as possible for those who wish to tweak.\\
+	Processing the output of Magic Lantern for maximum quality is a technical balancing act, at best. Certain functions approach impossibility,
+	\textit{especially} on Linux. convmlv aims to make the development of MLV, RAW, and even DNG sequences as easy and as featureful as
+	possible, with equal amounts of help and technical depth.\\
 	
-	Yes, it's a command line program, but don't let that scare you! 'cd newFolder' lets you change your current folder to newFolder,
-	and 'ls' lets you list all the files in your current folder; that's all you need to follow along here!
+	I've used earlier versions of convmlv in my own short films: \url{https://www.youtube.com/watch?v=a7iSjEfch5s&t=5s} and \url{https://www.youtube.com/watch?v=yi-G7sXHB1M&t=1s}.
+	So you may judge for yourself, I suppose ;) .
+	
+	\subsection{Important Links}
+		The Forum Post: \url{http://www.magiclantern.fm/forum/index.php?topic=16799.0}\\
+		The Git Repository: \url{https://github.com/so-rose/convmlv}\\
+		This Release: \url{https://github.com/so-rose/convmlv/releases}\\
+	
+	\subsection{What can it do?}
+		This entire document is dedicated to the answer! In short, it is a program \textbf{allowing you to develop .RAW, .MLV, or sequences of .DNGs
+		into workable image and video formats}. Many useful options are exposed.\\
+		
+		It can be as simple - 'convmlv -m footage.mlv' is valid - or as complex as you need it to be, for example with automation and color management.
+
+	\subsection{Terminal: Not So Scary! I swear!}
+		I swear, it's actually quite intuitive! Here's a crash course. First, open it up. You'll see a prompt, something like this:
+		
+\begin{lstlisting}[language=bash]
+	user@computer:~
+\end{lstlisting}
+
+		You're in your \textbf{Home Folder}, often abbreviated by a ~. Let's look at what files and folders there are:
+	
+\begin{lstlisting}[language=bash]
+	ls #List - Press enter!
+\end{lstlisting}
+
+		Look at all those files! But let's say I wanted to go to Desktop:
+		
+\begin{lstlisting}[language=bash]
+	cd Desktop #Change Directory, with one option: Desktop!
+\end{lstlisting}
+
+		Notice the prompt has changed:
+	
+\begin{lstlisting}[language=bash]
+	user@computer:~/Desktop
+\end{lstlisting}
+		
+		You can type ls again to list stuff on your Desktop. If you want to go back up to home, type 'cd ..' (.. means up, . means current directory). And, you're set!\\
+		
+		If you want to learn more, there's a lot of reading material out there. Start here: \url{https://www.digitalocean.com/community/tutorials/an-introduction-to-the-linux-terminal}.
 
 \section{Installation}
-	\subsection{General info}
+	\subsection{The Easy Way}
+	
+		If you have a Debian, Ubuntu, Fedora, or Mac OS, the installation is easy:
+
+\begin{enumerate}
+	\item Download the latest .tar.gz release from \url{https://github.com/so-rose/convmlv/releases}, and put it in its own folder.
+	\item Open up a Terminal, and cd to that folder containing only the downloaded .tar.gz file.
+	\item Extract the release using your favorite utility. In the terminal:
+	
+\begin{lstlisting}[language=bash]
+	tar -xvzf *.tar.gz
+\end{lstlisting}
+
+	\item Install all the distribution dependencies. The commands for Ubuntu, Debian, Fedora, and Mac can be found in the DEPENDENCIES file. On Debian:
+	
+\begin{lstlisting}[language=bash]
+	sudo apt-get install $(convmlv -K 0) #$Only for Debian.
+\end{lstlisting}
+
+	\item Install Python dependencies. The command is the same everywhere (make sure you're using Python 3.X!)
+	
+\begin{lstlisting}[language=bash]
+	sudo python3 -m pip install $(./convmlv -Y) #$Use pip to install things!
+\end{lstlisting}
+
+	\item You're all set! If you want to use convmlv as a commmand, you can type this:
+	
+\begin{lstlisting}[language=bash]
+	ln -s $(pwd)/convmlv.sh /usr/local/bin/convmlv #$Can call it normally now.
+\end{lstlisting}
+
+\end{enumerate}		
+
+\section{Manual Installation}
+
+	\subsection{Introduction}
+		
 		convmlv comes in the form of a ``.sh'' script. Installation is a little hairy, but bear with me, and you'll be done in max 10 minutes!\\
 		
 		Besides the script itself, several \textbf{dependencies} are required. How to best get these varies by system.\\
 		
-		To begin, download \textbf{convmlv.sh} and \textbf{balance.py} to the same folder from \url{https://bitbucket.org/so-rose/convmlv}.
+		To begin, download or clone the entire source from \url{https://github.com/so-rose/convmlv}.
 		
 	\subsection{UNIX}
 		On UNIX systems, everything is easy. There is certain setup that must be done, however. Open up a terminal, navigate to the folder containing
 		convmlv and balance.py, and type each line:
 		
 \begin{lstlisting}[language=bash]
-	chmod +x convmlv.sh balance.py #Let convmlv execute.
+	chmod +x convmlv.sh balance.py sRange.py #Let convmlv execute.
 \end{lstlisting}
 		
 		You can run the script now, but it won't work! This is because you must install the dependencies. First off, these are the package
-		dependencies; to list all package dependencies, type this:
+		dependencies, which your system has a unique way of providing. Type the command below, then type '/-K' and Enter to search for '-K'.
+		Next to each supported distribution is a command; copy this command with Shift+Ctrl+C !
 
 \begin{lstlisting}[language=bash]
-	./convmlv.sh -K
+	./convmlv.sh -h
 \end{lstlisting}
 
-		Find and install the corresponding packages on your machine. Imagemagick must be installed with exr support! If you're on Debian,
-		this task is very, very simple. Just type (or paste):
+		Find and install the corresponding packages on your machine by typing the command you just copied. Note that you must have installed
+		Homebrew on your Mac for this to work (See Mac instructions below). On Debian this would be:
 		
 \begin{lstlisting}[language=bash]
-	sudo apt-get install $(./convmlv.sh -K) #$Only for debian.
+	sudo apt-get install $(./convmlv.sh -K 0) #$Only for debian.
 \end{lstlisting}
 
-		Next, you must install the Python dependencies. This is universally very easy, once you have pip or pip3 installed (try both).
-		On Debian, simply type:
+		Next, you must install the Python dependencies. This is easy, and works the same everywhere:
 		
 \begin{lstlisting}[language=bash]
-	sudo pip3 install $(./convmlv.sh -Y) #$Python 3 version of pip.
+	sudo python3 -m pip install $ (./convmlv -Y) #$Python 3 version of pip.
 \end{lstlisting}
 
 		Finally, you must install the manual dependencies made by the talented Magic Lantern community. You can list these
-		by typing './convmlv.sh -N'.\\
+		by typing './convmlv.sh -M'.\\
 		
-		\textbf{The Easy Way}: Download each item in the list, making sure you put it in the same folder as convmlv.sh. 'chmod +x' each
-		file by itself, or just run:
+		\textbf{How To Do It}: Download each item in the list, making sure you put it in the same folder as convmlv.sh. 'chmod +x' each
+		file by itself, or just run this after downloading them all:
 		
 \begin{lstlisting}[language=bash]
 	chmod +x $(./convmlv.sh -N) #$Batch chmod
 \end{lstlisting}
 		
-		If you want to be able to type convmlv instead of ./convmlv.sh, you need to link it to your PATH. On Linux in general:
+		If you want to be able to type convmlv anywhere, you need to link it to your PATH:
 		
 \begin{lstlisting}[language=bash]
 	sudo ln -s $(pwd)/convmlv.sh /usr/local/bin/convmlv #$ Link for execution.
@@ -87,156 +163,372 @@
 		
 	\subsection{Mac}
 	
-		Follow the above UNIX directions, using the Mac Terminal. Instead of the apt-get command, try homebrew and/or install the dependencies manually.
-		If you can access the programs from the command line, then you're golden.
+		Follow the above UNIX directions, using the Mac Terminal. However, you must install Homebrew first.
 		
-		There are no other differences.
+		See \url{http://brew.sh/} for more instructions. Otherwise, there are no differences.
 
 \section{Output Options}
-
-	The development of an mlv named "footage.mlv" in the current directory into a ProRes video is very, very simple:
 	
+	\subsection{The Basics}
+		
+		The development of an mlv named "footage.mlv" in the current directory into a ProRes video is very, very simple:
+		
 \begin{lstlisting}[language=bash]
 	convmlv -m footage.mlv
 \end{lstlisting}
-
-	A folder named 'raw-conv' will be created, inside of which a folder named 'footage' will be created, inside of which you'll find your
-	high-quality, ready to edit ProRes video! By no means, however, is this the limit of the script.\\
-	
-	Image sequences, the standard in high-quality color grading and VFX, can be outputted either compressed or uncompressed as such:
-	
+		
+		A folder named 'raw-conv' will be created, inside of which a folder named 'footage' will be created, inside of which you'll find your
+		high-quality, ready to edit ProRes video! Plenty more features, however.\\
+		
+		Image sequences, used for highest quality color grading and VFX, can be outputted like so (compressed losslessly):
+		
 \begin{lstlisting}[language=bash]
 	convmlv -i footage.mlv
 \end{lstlisting}
+		
+		In the same 'footage' folder, you'll find a folder named exr-footage containing a sequence of OpenEXR files! Other formats
+		are available; refer to 'convmlv -h'.
+		
+	\subsection{Proxies}
 
-	In the same 'footage' folder, you'll find a folder named exr-footage containing a sequence of OpenEXR files! Other formats
-	are available; refer to './convmlv.sh -h'. If you want to compress the images, simply add -c, and the best lossless compression will
-	be chosen automatically (for some formats, this might incur slowdowns):
+		With such big files, slowdowns often happen during editing. As such, we can use a lighter, lower-quality representation for fast editing.
+		These are 'proxies': convmlv can make them for you in the form of either an MP4 (mode 1), a JPG sequence (mode 2) or both (mode 3). Specify
+		that you want a proxy, along with which mode, with the -p option as such:
 	
 \begin{lstlisting}[language=bash]
-	convmlv -i -c footage.mlv
+	convmlv -i -p 3 footage.mlv #Will generate mp4/jpg proxy.
 \end{lstlisting}
 
-	With these large files, slowdowns can often happen during heavy editing/grading. Sometimes you just want a preview as well.
-	As such, you're able to generate 'proxies' in the form of either an mp4 (mode 1), a jpg sequence (mode 2) or both (mode 3). Specify
-	the mode with the -p option as such:
+		The proxy will pop up beside your final footage.\\
+		
+		By default, the proxies are 1/2 the scale of the original footage, so that editing them is faster.
+		Specify the proxy scale with -s, in percentages, if you want to change this:
 	
 \begin{lstlisting}[language=bash]
-	convmlv -i -p3 -c footage.mlv #Will generate mp4/jpg proxy.
+	convmlv -i -s 75% -p 3 footage.mlv #75% proxy scale.
 \end{lstlisting}
 
-	Finally, by default the proxies are 1/2 the scale of the original footage, so that editing them is faster.
-	Specify the proxy scale with -s, in percentages, as such:
-	
+		When selecting JPG proxy, it \textbf{won't} be generated without -i. When selecting MP4 proxy \textbf{will}, it
+		be generated \textbf{no matter what}.\\
+		
+		Remember - you can mix \& match! Specifying both -i and -m will make both video and image sequences.
+
+	\subsection{Frame Range}
+		
+		In going over your footage with a tool like MLRawViewer, you may discover that you don't want the entire thing - especially
+		when dealing with limited disk space! You can specify a frame range to develop:
+		
 \begin{lstlisting}[language=bash]
-	convmlv -i -s75% -p3 -c footage.mlv #75% proxy scale.
+	convmlv -i -r 100-500 footage.mlv #From Frame 100 to 500.
 \end{lstlisting}
 
-	JPG proxies won't be generated without the -i option, but mp4 proxies \textbf{will} be generated without the -m option. Finally,
-	also keep in mind that you can create both sequences and videos - just specify both -i and -m.
+	The characters 's' and 'e' can be used instead of numbers. They represent "start frame" and "end frame". If you write
+	a single number without a -, then it will only develop that frame.\\
+	
+	DO NOT try to reuse DNG sequences using this feature! It will break!
 
 \section{RAW Development}
 	
-	convmlv uses DCraw, a powerful RAW development tool, for many of its functions here. I'll go through them in detail here:
+	\subsection{General}
 	
-	\begin{itemize}
-			\item Demosaicing, -d: RAW images aren't really images; it's literally what the sensor spits out. As such, it's neccessary to process
-			this sensor data, which has pixels for R, G, and B laid out in what's called a Bayer grid, into a viewable image. Algorithms that
-			do this are called demosaicing algorithms, and you have choices! Lower numbers are faster, higher numbers are higher quality.
-			For example, to generate the best quality compressd images, specify:
+			convmlv uses dcraw, a powerful RAW development tool, and as such inherits its features! I'll go through them in detail here:
+		
+			\begin{itemize}
+					\item Demosaicing, -d: RAW images represent data the sensor spits out. As such, it's neccessary to process
+					this data. Algorithms that do this are called demosaicing algorithms, and you have choices! Lower numbers are faster,
+					higher numbers are higher quality. For example, to generate the best quality compressd images, specify:
+				
+	\begin{lstlisting}[language=bash]
+		convmlv -i -d 3 footage.mlv #High quality demosaicing.
+	\end{lstlisting}
+
+					\item Four Color Mode, -r: When the VNG and AHD demosaicing modes get strange, this option tends to fix things.
+					\item Highlight Reconstruction, -H: Highlights are values too bright for detail. A mode of 2 will attempt to fix them up a bit, 
+				while modes of 3 to 9 tries to regain the detail using varying color tones. A mode of 1 will let colored highlights through; this will
+				usually look nasty unless you tune the Saturation Point (see below).
+			\end{itemize}
 			
+		\subsection{Noise Reduction}
+			
+			convmlv includes no less than 6 ways (including Darkframe Subtraction below) to reduce noise in your footage! See 'convmlv -h' for a very thorough explanation of each option.
+			Combining them will either condemn you or unblind you :) .
+			
+			\begin{itemize}
+				\item Chroma Smooth, -c: Color noise can often be twarted just by blurring the color channels. Numbers from 0 to 3 make this blur
+				stronger. \textit{Note this only works on MLV input footage.}
+				\item Wavelet Denoise, -n: RAW processing is a great point in the pipeline to do some wavelet denoising, which reduces
+				noise at an acceptable detail loss. A setting of 50 can take the edge off.
+				\item Temporal Denoise, -N: This denoising engine is best played with - see convmlv -h. A good starting point is '-N 0.03-0.04'.
+				\item HQ Denoise, -Q: This is Handbrake's denoising filter, explained here in great detail:
+				\url{https://mattgadient.com/2013/06/29/in-depth-look-at-de-noising-in-handbrake-with-imagevideo-examples/}. A good starting
+				point is '-Q 3-2:2-3'.
+				\item Removegrain, -O: This one is very weird. You can choose 4 combinations of 24 modes, listed here:
+				\url{https://ffmpeg.org/ffmpeg-filters.html#removegrain}.
+			\end{itemize}
+	
+\section{Color}
+
+	\subsection{White Balance}
+		In convmlv, the White Balance you shot with is used by default. You can also do Auto White Balance, or ignore it entirely, with modes of the -w option:
+	
 \begin{lstlisting}[language=bash]
-	convmlv -i -c -d3 footage.mlv #High quality demosaicing.
+	convmlv -i -w 0 footage.mlv #Auto White Balance
+\end{lstlisting}
+	
+		0 does AWB, 1 does Camera WB, 2 ignores WB. Camera WB is default\\
+		
+		When using AWB, it averages the white balance of ~15 frames spread evenly
+		throughout the footage. You can change the amount of frames used with the --white-speed option, if AWB seems off; this
+		will slow it down, however:
+	
+\begin{lstlisting}[language=bash]
+	convmlv -i --white-speed 50 footage.mlv #50 AWB samples.
 \end{lstlisting}
 
-			\item Four Color Mode, -r: When the VNG and AHD demosaicing modes get strange, this option tends to fix things.
-			\item Noise Reduction, -n: RAW processing is a great point in the pipeline to do some wavelet denoising, if you wish, which reduces
-			noise, but also detail. A setting of 200 can save images that might have been too noisy.
-			\item Gamma, -g: By default, the output is in Linear color space to preserve maximum quality. If you wish, however, your output
-			can be graded to a variety of curves, including sRGB, Adobe RGB, and BT.709.
-			\item Bit Depth, -S: The quality of RAW comes from its high bit depth of 14, which is saved as 16 bits. If you only want 8 bits,
-			however, just specify -S. You really do want 16 bits though...
-		\end{itemize}
-	
-\section{White Balance}
-	In convmlv, Auto White Balance is used by default. If you wish to use a different white balance mode, specify -w. For example, to use
-	the camera white balance, specify -w1 (in my experience, it's often not very helpful):
-	
-\begin{lstlisting}[language=bash]
-	convmlv -i -c -w1 footage.mlv #30 AWB samples.
-\end{lstlisting}
-	
-	If you do not wish to balance the image at all, specify -w2. This will make for a crappy image if you don't balance it yourself later!\\
-	
-	When using AWB, what balance.py does is average the white balance of ~15 frames, spread evenly
-	throughout the footage, then apply the averaged balance to the entire shot. You can change the amount of samples that it will try to 
-	average the white balance using with the -A option, for speed vs. accuracy:
-	
-\begin{lstlisting}[language=bash]
-	convmlv -i -c -A30 footage.mlv #30 AWB samples.
-\end{lstlisting}
-
-\section{Features}
-	\subsection{Dual ISO}
-		convmlv is capable of processing Dual ISO footage! Simply specify -u.
-	
-	\subsection{Badpixels}
-		On some cameras, focus pixel issues are rampant. To fix it, simply specify -b! For Dual ISO footage, this is not always totally
-		effective; the issue is being worked on!
-	
-	\subsection{Darkframe Subtraction}
-		In reducing noise, you can do a very sneaky technique called darkframe subtraction. It's very simple:
+	\subsection{Color Management}
+		convmlv is completely color managed. What does this mean for you? When moving between software, the form your color is in is very important.\\
+		
+		Images aren't simple. They are often stored, processed, and viewed as a result of complex transformations usually called, 
+        in applications, color management. Understanding it is required as a colourist, and encouraged for DPs and Cinematographers.
 		
 		\begin{itemize}
-			\item Dark Footage: With your lens cap on, using the same settings as your footage, take ~5 seconds of RAW footage.
-			\item Use Dark Footage: Specify -F, then the path to the dark footage, to automatically average the footage + reduce noise! Example:
-\begin{lstlisting}[language=bash]
-	convmlv -i -c -F./dark.mlv footage.mlv #30 AWB samples.
-\end{lstlisting}
+			\item Intro: \url{http://www.cambridgeincolour.com/tutorials/color-management1.htm}
+			\item Understanding Gamma: \url{http://www.cambridgeincolour.com/tutorials/gamma-correction.htm}
+			\item Color Spaces: \url{http://www.cambridgeincolour.com/tutorials/color-spaces.htm}
+			\item Conversions: \url{http://www.cambridgeincolour.com/tutorials/color-space-conversion.htm}
+			\item Monitor Calibration: \url{http://www.cambridgeincolour.com/tutorials/monitor-calibration.htm}
 		\end{itemize}
 		
-		For a decent speedup when batch processing, you are able to \textbf{preaverage} your dark footage. Use mlv-dump to do this, making
-		sure to save the output file with the .darkframe extension (I'll explain why in a moment). Example:
+		Long story short, convmlv uses LUTs for everything. This may change in the future, as I'm working on a project called
+		openlut (\url{https://github.com/so-rose/openlut}), but for now, these LUTs are part of the convmlv installation (in color-core and color-ext folders).\\
+		
+		The -g option lets you choose a gamma, while the -G option lets you choose a gamut. You'll notice staples like sRGB, XYZ, etc. .
+		The fancier gamma/gamuts require you to have the 'color-ext' folder in your installation - you should have this, unless you manually omitted it.
 		
 \begin{lstlisting}[language=bash]
-	./mlv_dump -o 1600iso.darkframe -a dark.mlv
-	#./mlv_dump -o outputfile.darkframe -a darkmlv.mlv
-\end{lstlisting}
-		
-		To use the averaged file as an averaged file, make sure it has the .darkframe extension, and then just specify it in the -F path. In
-		this way, you're able to build up a library of sorts at different ISOs! Example:
-		
-\begin{lstlisting}[language=bash]
-	convmlv -i -c -F./1600iso.darkframe footage.mlv
-\end{lstlisting}
-	
-	\subsection{Applying LUTs}
-		Using convmlv, you're able to apply LUTs to images and movies! EXR sequences and image proxies don't work, and images
-		in general are slow to apply, but otherwise it works fast and fine with the option -l, then the path to the LUT! Example:
-		
-\begin{lstlisting}[language=bash]
-	convmlv -m -l./expensiveLUT.cube footage.mlv
-\end{lstlisting}
-	
-	\subsection{Custom Paths}
-		If you want to use a custom path for any of the manual dependencies, you can. This is the first section of options when you
-		specify 'convmlv -h'. Additionally you can redefine the output directory, which defaults to raw-conv. The
-		directory will then automatically be created for you. For example:
-		
-\begin{lstlisting}[language=bash]
-	convmlv -i -c -d3 -o./differentoutdir footage.mlv
+	convmlv -i -g 2 -G 5 footage.mlv #Cineon Log in DCI-P3 Gamut!
 \end{lstlisting}
 
-\section{Misc Considerations}
-	convmlv is multithreaded; you can redefine the number of processes in use from a default of 8 using -T followed by an integer.\\
-	
-	Batch processing files can be done with a *. For example, to process all .MLV files in a directory:
-	
+	\subsection{LUT Grading}
+		LUTs are really cool. Once created in a piece of color grading software, you can apply it to any footage to replicate any style. Using 3D LUTs, every
+		color maps to a different color!\\
+		
+		convmlv can apply any number of 3D LUTs up to 64x64x64 resolution, in cube, 3dl, dat, and m3d formats! Simply use the -l option to do so:
+		
 \begin{lstlisting}[language=bash]
-	convmlv -i -c *.MLV
+	convmlv -i -l lut1.cube -l lut2.cube footage.mlv #Two LUTs applied.
+\end{lstlisting}
+		
+		If you want to grade to your own gamma/gamut, I suggest using LUTCalc (https://cameramanben.github.io/LUTCalc/) to generate a corresponding LUT.\\
+		
+		Currently lacking is 1D LUT support, and x65 3D LUT support. Once openlut is integrated, these problems will go away.
+		
+	\subsection{Fixing Saturation Point}
+		Sometimes, dcraw gets something called the "saturation point" of your camera wrong. This will manifest itself as nasty, purple highlights when using
+		-H 1, and will screw up highlight reconstruction (-H 3 to 9) and possibly -H 2 as well when it happens.\\
+		
+		To fix it, lower it incrementally from 15000 until the highlights turn white. Trial and error is the easy way to do this:
+		
+\begin{lstlisting}[language=bash]
+	convmlv -i -S 15000 footage.mlv #Setting the sat point.
+\end{lstlisting}
+		
+		If you want a more scientific solution, then develop one DNG yourself using 'dcraw -D -j -4 -T'. The largest 0 to 1 pixel value, multiplied by 2\^14 (14 bits),
+		is the  theoretical optimal number.\\
+		
+		I don't find this to be a problem at all in my everyday life, because most DNGs have this data properly set. However, some don't, in which case you want to fix it!
+\section{Features}
+	\subsection{Dual ISO}
+		convmlv can processing Dual ISO footage! Simply specify -u:
+
+\begin{lstlisting}[language=bash]
+	convmlv -i -u footage.mlv #Dual ISO - the easy way!
+\end{lstlisting}
+
+	Dual ISO is a method of increasing the dynamic range of your shots, at the cost of shadow/highlight resolution. It can create some
+	absolutely \textbf{stunning} footage.
+
+	\subsection{Bad/Focus Pixels}
+		On some cameras, focus pixel issues are rampant. These will be static, colored dots, that end up ruining footage. To fix it, simply specify -b:
+		
+\begin{lstlisting}[language=bash]
+	convmlv -i -b footage.mlv #Fixing focus pixels.
+\end{lstlisting}
+
+		Note that, due to a dcraw bug, processing Dual ISO footage won't remove all the focus pixels. I suggest you use MLVFS (see the tip) in conjunction with convmlv,
+		which solves this issue.\\
+		
+		In the same vein, but still different, is the issue of bad camera pixels. As your camera ages, pixels will die; as such, you want to interpolate around
+		them. This must be done manually, as described here: \url{http://www.dl-c.com/board/viewtopic.php?f=4&t=686}.\\
+		
+		You end up with a .badpixels file, which you want to apply to your footage to clean these dead pixels up. This is simple to do:
+		
+\begin{lstlisting}[language=bash]
+	convmlv -i -a mycamera.badpixels footage.mlv #Fix bad pixels.
+\end{lstlisting}
+		
+		You can freely combine the focus pixel fix with or without the bad pixels fix.
+		
+	\subsection{Darkframe Subtraction}
+		In reducing noise, you can do a very sneaky technique called darkframe subtraction. This does wonders for removing shadow noise, and generally
+		cleaning footage up a bunch.
+		
+		\begin{enumerate}
+			\item Dark Footage: With your lens cap on, using the same settings as your footage, take ~5 seconds of dark RAW footage.
+			\item Use Dark Footage: Specify -F, then the path to the dark footage, to automatically average the footage + reduce noise! Example:
+\begin{lstlisting}[language=bash]
+	convmlv -i -F ./dark.mlv footage.mlv #Using dark.mlv as darkframe.
+\end{lstlisting}
+		\end{enumerate}
+		
+		For speed \& convenience, \textbf{you want to create} a darkframe from your dark footage. convmlv can do this for you:
+		
+\begin{lstlisting}[language=bash]
+	convmlv -R f2-8.iso1600 dark.mlv #Makes "f2-8.iso1600.darkframe"f.
+\end{lstlisting}
+		
+		To use the averaged file as an averaged file, make sure it has the .darkframe extension, and then just specify it in the -F path:
+		
+\begin{lstlisting}[language=bash]
+	convmlv -F f2-8.iso1600.darkframe footage.mlv #Makes f2-8.iso1600.darkframe.
+\end{lstlisting}
+		
+		If you're clever, you'll make a library of darkframes for all sorts of shooting situations, so that you'll never
+		be without this powerful noise reduction technique.
+	
+	\subsection{Misc. Filters}
+		convmlv comes with a few other filters (from FFMPEG), for convenience:
+		
+		\begin{itemize}
+			\item Sharpen, -A: This filter lets you sharpen or blur your footage. A medium sharpen is something like 5:1:3:0, but 
+			see 'convmlv -h' for the full settings.
+			\item Deshake, -D: This filter automatically stabilizes the footage, with mixed results. Typically, you want to crop/scale the output
+			afterwards.
+		\end{itemize}
+		
+		Let me know if you want more!
+	
+	\subsection{Custom Paths}
+		By default, all developed footage will be placed in folders in './raw-conv'. You can change this:
+		
+\begin{lstlisting}[language=bash]
+	convmlv -i -o differentoutdir footage.mlv #Change output directory.
 \end{lstlisting}
 	
-	If you have any feedback or feature requests, I'd be happy to hear it! Just reply to the thread at 
-	\url{http://www.magiclantern.fm/forum/index.php?topic=16799.0}, or PM me on the forums, or write a comment in the repository!
+		You can also supply a custom path for any or all of the dependencies, if you wish. See convmlv -h for the full list; here's an example:
+		
+\begin{lstlisting}[language=bash]
+	convmlv --dcraw ./new-dcraw-binary footage.mlv #Use custom dcraw.
+\end{lstlisting}
+
+\section{Config Files}
+	Everything that can be typed at the command line, can also be specified in config files. This means you don't have to type it, and is essential
+	for production (for example, you can make a "production config", input all your footage, and step away while it all develops for you!). They're
+	powerful, but also more complex than just typing in options.\\
+	
+	As always, see convmlv -h for more info! There are also numerous examples bundled with the release, in "configs".
+	
+	\subsection{Specifying Options}
+	
+		There are three ways to specify options in convmlv. Each overwrites the last one:
+		\begin{itemize}
+			\item Global Config: Found in \textit{homedir}/convmlv.conf, if it exists.
+			\item Local Config: Found at the path specified by -C or --config.
+			\item Command Line Options: Passed when calling convmlv.
+		\end{itemize}
+		
+		So, if I specified 'GAMMA 2' in the Global, but then specified '-g 3' on the command line,
+		then the output gamma would be set to mode 3.
+		
+	\subsection{Syntax}
+		All valid config files begin the same way:
+			
+		\begin{verbatim}
+        CONFIG\_NAME <name>
+		\end{verbatim}
+			
+		\textbf{Comments} start with a \#. They are ignored.\\
+		
+		You specify options like so:
+		
+		\begin{verbatim}
+        <VARNAME> <VALUE>
+		\end{verbatim}
+		
+		If VARNAME is a true/false flag, then specifying it is enough - there's no VALUE.\\
+		
+		Each command line option has a corresponding VARNAME. The VALUE is what you'd type into the terminal.
+		
+	\subsection{File-Specific Blocks}
+		You can even specify options for specific files! That is to say, these options will only be triggered if the name of the file
+		you're developing matches. This lets you essentially program how all the footage of your production is developed, all in one config file.\\
+		
+		This only works for LOCAL config files. The way to use this feature is the File-Specific Block:
+		
+		\begin{verbatim}
+        File-Specific Block: Config per specific filename.
+        
+        / <TRUNCATED INPUTNAME>
+            ...options here will only be used for the specified filename.
+        *
+		\end{verbatim}
+		
+		You must use the truncated (no .mlv or .raw) input name after the /. Nested blocks will fail.
+
+\section{Tips and Tricks}
+	Using this in real situations, I've come up with some time savers you might find useful!
+	
+	\subsection{Batch Processing}
+
+		Batch processing files can be done with a *. For example, to process all .MLV files in a directory:
+	
+\begin{lstlisting}[language=bash]
+	convmlv -i *.MLV #Develops all MLV files in the current directory.
+\end{lstlisting}
+
+		Combine this with config files and the file-specific blocks, and you may only have to run a single
+		command to develop an entire project of footage in a completely customized way.
+		
+	\subsection{Develop Anywhere Without Dependency Error}
+
+	Something you should absolutely have in your Global Config is RES\_PATH. This is the folder where all your manual dependencies (mlv-dump, etc.) are looked for.
+	By default it's the current directory, but point it at the folder containing mlv-dump, raw2dng, etc. in your Global Config, and you'll
+	be able to develop MLVs anywhere on the system!
+	F
+	\subsection{Thread Count}
+	
+		Though the script auto-detects available threads, you can of course customize this:
+	
+\begin{lstlisting}[language=bash]
+	convmlv --threads 2 footage.mlv #Develop with 2 threads.
+\end{lstlisting}
+
+	\subsection{Read MLV Properties}
+		convmlv can read settings from any MLV file without developing it, like camera name, aperture, ISO, White Balance, focal length, etc. 
+		using the -q option:
+		
+\begin{lstlisting}[language=bash]
+	convmlv -q footage.mlv #Develop with 2 threads.
+\end{lstlisting}
+
+	\subsection{Use MLVFS instead of mlv\_dump for Speed and Quality}
+		MLVFS allows you to "mount" an MLV file, gaining "instant" access to the DNG files with live (website) configurable options! I won't go
+		much more into it; you can get it here: \url{http://www.magiclantern.fm/forum/index.php?topic=9335.0}.
+		
+		To use it with convmlv, first mount the MLVs as normal. Simply use the mounted path to the folder containing a DNG sequence as your input,
+		and watch it skip MLV conversion entirely (it's done fast, and on the fly), jumping straight to the EXR/ProRes creation!\\
+		
+		In my limited tests, the quality of footage has been very, very good. Note that some features, like chroma smoothing, need to be manually
+		triggered in MLVFS; convmlv relies on mlv-dump there, which is no longer being used! Also, darkframe averaging is currently impossible this way.\\
+		
+		In the future I'll integrate it more easily with convmlv. Stay tuned!
+
+	\subsection{Stay Up to Date}
+		Make sure to check the forum post, and/or the repository, for updates! They fix bugs, add features, and more!
+
+	\subsection{I'm Here to Help!}
+	
+		If you have any bug reports, feedback or feature requests, I'd be happy to hear it! Just reply to the thread at 
+		\url{http://www.magiclantern.fm/forum/index.php?topic=16799.0}, or PM me on the forums, or write a comment, or create an issue on github!
 
 \end{document}

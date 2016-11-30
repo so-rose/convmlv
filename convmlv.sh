@@ -110,9 +110,9 @@ setPaths() { #Repends on RES_PATH and PYTHON. Run this function if either is cha
 
 setDefaults() { #Set all the default variables. Run here, and also after each ARG run.
 #DEPENDENCIES
-	DEB_DEPS="imagemagick dcraw ffmpeg python3 python3-pip libimage-exiftool-perl" #Dependency package names (Debian). List with -K option.
-	UBU_DEPS="imagemagick dcraw ffmpeg python3 python3-pip libimage-exiftool-perl" #Dependency package names (Ubuntu). List with -K option.
-	FED_DEPS="ImageMagick dcraw ffmpeg python3 python-pip perl-Image-ExifTool" #Dependency package names (Fedora). List with -K option.
+	DEB_DEPS="imagemagick dcraw ffmpeg python3 python3-pip libimage-exiftool-perl libc6-i386" #Dependency package names (Debian). List with -K option.
+	UBU_DEPS="imagemagick dcraw ffmpeg python3 python3-pip libimage-exiftool-perl libc6-i386" #Dependency package names (Ubuntu). List with -K option.
+	FED_DEPS="ImageMagick dcraw ffmpeg python3 python-pip perl-Image-ExifTool glibc-devel.i686" #Dependency package names (Fedora). List with -K option.
 	BREW_DEPS="imagemagick dcraw ffmpeg python3 exiftool"
 	
 	PIP_DEPS="numpy tifffile" #You don't need Pillow. That's just to make balance.py a bit more portable.

@@ -11,7 +11,7 @@ Mac (Homebrew): brew install $(./convmlv.sh -K 3)
 
 For Python (make sure you're using python3):
 
-sudo python3 -m pip install $ (./convmlv -Y)
+sudo python3 -m pip install $(./convmlv -Y)
 
 
 Binary Source Code:

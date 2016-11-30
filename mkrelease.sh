@@ -25,4 +25,4 @@ else
 fi
 
 cd "$BINPATH"
-tar -czvf $RELEASE/convmlv-${VERSION}-${PLATFORM}.tar.gz ../balance.py mlv2badpixels.sh mlv_dump raw2dng cr2hdr ../sRange.py ../CHANGELOG ../licence ../convmlv.sh ../color-core/ ../color-ext ../DEPENDENCIES ../docs/MANPAGE ../docs/docs.pdf ../docs/workflow.txt
+tar -czvf $RELEASE/convmlv-${VERSION}-${PLATFORM}.tar.gz ../balance.py mlv2badpixels.sh mlv_dump raw2dng cr2hdr ../sRange.py ../CHANGELOG ../licence ../convmlv.sh ../color-core/ ../color-ext ../DEPENDENCIES ../docs/MANPAGE ../docs/docs.pdf ../docs/workflow.txt ../configs/*

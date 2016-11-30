@@ -14,7 +14,7 @@ INFO:
 	  
 	It's as simple or complex as you need it to be: 'convmlv -m <mlvfile>.mlv' is enough for good-looking output!
 	
-VERSION: 2.0.0
+VERSION: 2.0.1
 	
 MANUAL DEPENDENCIES:
 	Place these in RES_PATH (see OPTIONS, BASIC). Keep in mind you also need dist. and pip packages.

@@ -1,6 +1,6 @@
 #!/bin/bash
 
-VERSION="2_0_1"
+VERSION=$(echo "$(./convmlv.sh -v)" | sed -e 's/\./\_/g')
 
 #HOW TO USE (Linux and Mac):
 #  1. Update version above.

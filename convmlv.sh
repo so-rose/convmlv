@@ -900,7 +900,8 @@ parseArgs() { #Amazing new argument parsing!!!
 						OUTDIR=$val
 						;;
 					version)
-						echo -e "convmlv v${VERSION}"
+						echo -e "${VERSION}"
+						exit 0
 						;;
 					help)
 						help
@@ -983,7 +984,8 @@ parseArgs() { #Amazing new argument parsing!!!
 			
 			
 			v)
-				echo -e "convmlv v${VERSION}"
+				echo -e "${VERSION}"
+				exit 0
 				;;
 			h)
 				help
@@ -2370,7 +2372,7 @@ for ARG in "${FILE_ARGS_ITER[@]}"; do #Go through FILE_ARGS_ITER array, copied f
 			oldFiles="${TMP}/orig_dng"
 			find $oldFiles -name "*.dng" | xargs -I '{}' mv {} $DNG #Preserve the original, unprocessed DNGs.
 		else
-			find $TMP -name "*.dng" | xargs -I '{}' mv {} $DNG
+			find $TMP -name "*.dng" | xargs -I '{}' mv {} $DNGv
 		fi
 	fi
 	

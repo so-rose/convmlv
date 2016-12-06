@@ -12,6 +12,7 @@ VERSION=$(echo "$(./convmlv.sh -v)" | sed -e 's/\./\_/g')
 
 REP_PATH="$(pwd)"
 BINPATH="${REP_PATH}/binaries"
+SRCPATH="${REP_PATH}/src"
 RELEASE="${REP_PATH}/release"
 
 mkdir -p "$RELEASE"
@@ -24,5 +25,5 @@ else
 	echo "Platform not yet supported! Contact me at contact@sofusrose.com."
 fi
 
-cd "$BINPATH"
-tar -czvf $RELEASE/convmlv-${VERSION}-${PLATFORM}.tar.gz ../balance.py mlv2badpixels.sh mlv_dump raw2dng cr2hdr ../sRange.py ../CHANGELOG ../licence ../convmlv.sh ../color-core/ ../color-ext ../DEPENDENCIES ../docs/MANPAGE ../docs/docs.pdf ../docs/workflow.txt ../configs/*
+cd $REP_PATH
+tar -czvf $RELEASE/convmlv-${VERSION}-${PLATFORM}.tar.gz binaries/ src/ CHANGELOG licence convmlv.sh color-core/ color-ext DEPENDENCIES docs/MANPAGE docs/docs.pdf docs/workflow.txt configs/*

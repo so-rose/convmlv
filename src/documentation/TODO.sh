@@ -1,3 +1,7 @@
+#!/bin/bash
+
+#desc: Kinda standalone TODO list.
+
 less -R << EOF
 
 TODO:

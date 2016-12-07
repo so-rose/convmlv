@@ -1,3 +1,6 @@
+#!/bin/bash
+
+#desc: Error checking and consequence functions.
 
 invOption() {
 	str=$1
@@ -13,50 +16,55 @@ invOption() {
 }
 
 checkArg() {
-	#stderr is for printing; stdout is for return values.
+	#usage: checkArg arg
+	#desc: Checks the argument to see if it's a valid MLV, RAW, or DNG sequence.
+	#return: 'false' if not valid, 'true' if it is.
+	#print (stderr): Error stuff.
 	
-	argBase="$(basename "$ARG")"
-	argExt="${argBase##*.}"
-	argTrunc="${argBase%.*}"
+	local arg="$1"
+	
+	local argBase="$(basename "$arg")"
+	local argExt="${argBase##*.}"
+	local argTrunc="${argBase%.*}"
 	local cont
 	
 	#Argument Checks
-	if [ ! -f $ARG ] && [ ! -d $ARG ]; then
-		nFound "File" "${ARG}" "Skipping File"
-		echo "skip" >&1; return
+	if [ ! -f $arg ] && [ ! -d $arg ]; then
+		nFound "File" "${arg}" "Skipping File"
+		echo "false" >&1; return
 	fi
 	
-	if [[ ! -d $ARG && ! ( $argExt == "MLV" || $argExt == "mlv" || $argExt == "RAW" || $argExt == "raw" ) ]]; then
-		echo -e "\033[0;31m\033[1mFile ${ARG} has invalid extension!\033[0m\n" >&2
-		echo "skip" >&1; return
+	if [[ ! -d $arg && ! ( $argExt == "MLV" || $argExt == "mlv" || $argExt == "RAW" || $argExt == "raw" ) ]]; then
+		error "File ${arg} has invalid extension!\n" >&2
+		echo "false" >&1; return
 	fi
 	
-	if [[ ( ( ! -f $ARG ) && $(ls -1 ${ARG%/}/*.[Dd][Nn][Gg] 2>/dev/null | wc -l) == 0 ) && ( `folderName ${ARG}` != $argTrunc ) ]]; then
-		echo -e "\033[0;31m\033[1mFolder ${ARG} contains no DNG files!\033[0m\n" >&2
-		echo "skip" >&1; return
+	if [[ ( ( ! -f $arg ) && $(ls -1 ${arg%/}/*.[Dd][Nn][Gg] 2>/dev/null | wc -l) == 0 ) && ( `folderName ${arg}` != $argTrunc ) ]]; then
+		error "Folder ${arg} contains no DNG files!" >&2
+		echo "false" >&1; return
 	fi
 	
-	if [ ! -d $ARG ] && [[ $(echo $(wc -c ${ARG} | xargs | cut -d " " -f1) / 1000 | bc) -lt 1000 ]]; then #Check that the file is not too small.
+	if [ ! -d $arg ] && [[ $(echo $(wc -c ${arg} | xargs | cut -d " " -f1) / 1000 | bc) -lt 1000 ]]; then #Check that the file is not too small.
 		cont=false
 		while true; do
 			#xargs easily trims the cut statement, which has a leading whitespace on Mac.
-			read -p "${ARG} is unusually small at $(echo "$(echo "$(wc -c ${ARG})" | xargs | cut -d$' ' -f1) / 1000" | bc)KB. Continue, skip, remove, or quit? [c/s/r/q] " csr
+			read -p "${arg} is unusually small at $(echo "$(echo "$(wc -c ${arg})" | xargs | cut -d$' ' -f1) / 1000" | bc)KB. Continue, skip, remove, or quit? [c/s/r/q] " csr
 			case $csr in
-				[Cc]* ) "\n\033[0;31m\033[1mContinuing.\033[0m\n"; break
+				[Cc]* ) error "\nContinuing.\n"; break
 				;;
-				[Ss]* ) echo -e "\n\033[0;31m\033[1mSkipping.\033[0m\n"; cont=true; break
+				[Ss]* ) error "\nSkipping.\n"; cont=true; break
 				;;
-				[Rr]* ) echo -e "\n\033[0;31m\033[1mRemoving ${ARG}.\033[0m\n"; cont=true; rm $ARG; break
+				[Rr]* ) error "\nRemoving ${arg}.\n"; cont=true; rm $arg; break
 				;;
-				[Qq]* ) echo -e "\n\033[0;31m\033[1mQuitting.\033[0m\n"; isExit=true; break
+				[Qq]* ) error "\nQuitting.\n"; isExit=true; break
 				;;
-				* ) echo -e "\033[0;31m\033[1mPlease answer continue, skip, or remove.\033[0m\n"
+				* ) error "Please answer continue, skip, or remove.\n"
 				;;
 			esac
 		done
 		
 		if [ $cont == true ]; then
-			echo "skip" >&1; return
+			echo "false" >&1; return
 		fi
 	fi
 }

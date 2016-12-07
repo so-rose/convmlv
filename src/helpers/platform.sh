@@ -1,5 +1,7 @@
 #!/bin/bash
 
+#desc: Platform-specific functions.
+
 getThreads() {
 	local threads=4 #4 threads by default
 	

@@ -1,3 +1,6 @@
+#!/bin/bash
+
+#desc: All config and command line parsing happens here.
 
 parseConf() {
 	file=$1 #The File to Parse

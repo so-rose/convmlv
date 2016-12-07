@@ -1,7 +1,6 @@
 #!/bin/bash
 
-VERSION="2.1.0a1" #Version string.
-INPUT_ARGS=$(echo "$@") #The original input argument string.
+#desc: Main file - uses convmlv components as needed.
 
 #~ The MIT License (MIT)
 
@@ -24,6 +23,9 @@ INPUT_ARGS=$(echo "$@") #The original input argument string.
 #~ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 #~ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 #~ SOFTWARE.
+
+VERSION="2.1.0a2" #Version string.
+INPUT_ARGS=$(echo "$@") #The original input argument string.
 
 if [ $# == 0 ]; then #No given arguments.
 	echo -e "\033[0;31m\033[1mNo arguments given.\033[0m\n\tType 'convmlv -h/--help' to see help page, or 'convmlv -v/--version' for current version string."
@@ -214,6 +216,8 @@ source "$SRC_PATH/helpers/utility.sh"
 source "$SRC_PATH/core/parsing.sh"
 source "$SRC_PATH/helpers/error.sh"
 source "$SRC_PATH/core/develop.sh"
+source "$SRC_PATH/core/proc.sh"
+source "$SRC_PATH/imgProcessing/imgMath.sh"
 
 
 #OPTION PARSING FROM CONFIG AND CLI - same as at bottom of develop().
@@ -259,7 +263,41 @@ case "$PROGRAM" in
 		;;
 	develop)
 		checkDeps #Check static dependencies.
-		develop #Do the development step, using the globals that exist.
+		
+		ARG_INC=0
+		for ARG in "${FILE_ARGS_ARRAY[@]}"; do #Go through FILE_ARGS_ARRAY array, copied from parsed $@ because $@ is going to be changing on 'set --'
+		#Check the argument
+			fReturn=$(checkArg "$ARG")
+			if [[ $fReturn = "false" ]]; then continue; fi
+			
+		#Evaluate local configuration file for file-specific blocks.
+			parseConf "$LCONFIG" true
+			
+		#Do the development step, using the globals that exist.
+			develop "$ARG"
+			
+		#RESET ARGS & REPARSE OPTIONS - same as in convmlv.sh.
+			#Big parse/reparse, making sure global, local, command line options all override each other correctly.
+			set -- $INPUT_ARGS #Reset the argument input for reparsing.
+			setDefaults #Hard set/reset all the lovely globals.
+			OPTIND=1 #Reset argument parsing.
+			
+			parseConf "$GCONFIG" false #Parse global config file.
+
+			parseArgs "$@" #First, parse all cli args. We only need the -C flag, but that forces us to just parse everything.
+			shift $((OPTIND-1)) #Shift past all of the options to the file arguments.
+
+			parseConf "$LCONFIG" false #Parse local config file.
+			set -- $INPUT_ARGS #Reset $@ for cli option reparsing.
+			OPTIND=1 #To reset argument parsing, we must set OPTIND to 1.
+
+			parseArgs "$@" #Reparse cli to overwrite local config options.
+			shift $((OPTIND-1)) #Shift past all of the options to the file arguments.
+			OPTIND=1 #Reset argument index.
+			
+		#Decrement the arguments that are left.
+			let ARG_INC++
+		done
 		;;
 esac
 

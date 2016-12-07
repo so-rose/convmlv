@@ -1,5 +1,7 @@
 #!/bin/bash
 
+#desc: The help function lives here, as well as helper functions thereof.
+
 help() {
 less -R << EOF 
 Usage:

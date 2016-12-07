@@ -1,3 +1,7 @@
+#!/bin/bash
+
+#desc: Functions dealing with getting and printing footage (ARG) settings.
+
 prntSet() {
 	cat << EOF
 $(bold CameraName): ${CAM_NAME}
@@ -72,6 +76,23 @@ dngSet() { #Set as many options as the RAW spec will allow. Grey out the rest.
 	KELVIN="Unknown"
 	
 	rm $dataDNG
+}
+
+reuseSet() {
+	local dng_loc="$1"
+	
+	FPS=`cat ${dng_loc}/../settings.txt | grep "FPS" | cut -d $" " -f2`
+			
+	CAM_NAME=`cat ${dng_loc}/../settings.txt | grep "CameraName" | cut -d $" " -f2`
+	FRAMES=`cat ${dng_loc}/../settings.txt | grep "Frames" | cut -d $" " -f2` #Grab FRAMES from previous run.
+	RES_IN=`cat ${dng_loc}/../settings.txt | grep "Resolution" | cut -d $" " -f2`
+	ISO=`cat ${dng_loc}/../settings.txt | grep "ISO" | cut -d $" " -f2`
+	APERTURE=`cat ${dng_loc}/../settings.txt | grep "Aperture" | cut -d $" " -f2`
+	LEN_FOCAL=`cat ${dng_loc}/../settings.txt | grep "FocalLength" | cut -d $" " -f2`
+	SHUTTER=`cat ${dng_loc}/../settings.txt | grep "ShutterSpeed" | cut -d $" " -f2`
+	REC_DATE=`cat ${dng_loc}/../settings.txt | grep "RecordingDate" | cut -d $" " -f2`
+	REC_TIME=`cat ${dng_loc}/../settings.txt | grep "RecordingTime" | cut -d $" " -f2`
+	KELVIN=`cat ${dng_loc}/../settings.txt | grep "WBKelvin" | cut -d $" " -f2`
 }
 
 printFileSettings() {

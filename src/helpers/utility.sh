@@ -1,3 +1,7 @@
+#!/bin/bash
+
+#desc: Portable utility functions that could live in their own library.
+
 nFound() { #Prints: ${type} ${name} not found! ${exec_instr}.\n\t${down_instr} to stderr.
 	type=$1
 	name="$2"
@@ -12,6 +16,11 @@ nFound() { #Prints: ${type} ${name} not found! ${exec_instr}.\n\t${down_instr} t
 }
 
 mkdirS() {
+	#usage: mkdirS path; if [ $? -eq 1 ]; then return 1; fi
+	#desc: A function that allows the user to decide whether to overwrite an existing directory.
+	#note: The user must use return codes to provide the return from develop().
+	#return: Exit code 1 denotes that we must continue.
+	
 	path=$1
 	cleanup=$2
 	cont=false
@@ -22,11 +31,11 @@ mkdirS() {
 			case $ynq in
 				[Yy]* ) echo -e ""; rm -rf $path; mkdir -p $path >/dev/null 2>/dev/null; break
 				;;
-				[Nn]* ) echo -e "\n\033[0;31m\033[1mDirectory ${path} won't be created.\033[0m\n"; cont=true; `$cleanup`; break
+				[Nn]* ) error "\nDirectory ${path} won't be created.\n"; cont=true; `$cleanup`; break
 				;;
-				[Qq]* ) echo -e "\n\033[0;31m\033[1mHalting execution. Directory ${path} won't be created.\033[0m\n"; `$cleanup`; exit 1;
+				[Qq]* ) error "\nHalting execution. Directory ${path} won't be created.\n"; `$cleanup`; exit 1;
 				;;
-				* ) echo -e "\033[0;31m\033[1mPlease answer yes or no.\033[0m\n"
+				* ) error "Please answer yes or no, or quit.\n"
 				;;
 			esac
 		done
@@ -35,8 +44,7 @@ mkdirS() {
 	fi
 	
 	if [ $cont == true ]; then 
-		let ARGNUM--
-		continue
+		return 1
 	fi
 	
 }
@@ -50,3 +58,26 @@ joinArgs() {
 	#Joins the arguments of the input array using commas.
 	local d=$1; shift; echo -n "$1"; shift; printf "%s" "${@/#/$d}"
 }
+
+runSim() {
+		# Command: cat $PIPE | cmd1 & cmdOrig | tee $PIPE | cmd2
+		
+		# cat $PIPE | cmd1 - gives output of pipe live. Pipes it into cmd1. Nothing yet; just setup.
+		# & - runs the next part in the background.
+		# cmdOrig | tee $PIPE | cmd2 - cmdOrig pipes into the tee, which splits it back into the previous pipe, piping on to cmd2!
+		
+		# End Result: Output of cmdOrig is piped into cmd1 and cmd2, which execute, both printing to stdout.
+		
+		cmdOrig=$1
+		cmd1=$2
+		cmd2=$3
+		
+		#~ echo $cmdOrig $cmd1 $cmd2
+		#~ echo $($cmdOrig)
+		
+		PIPE="${TMP}/pipe_vid" # $(date +%s%N | cut -b1-13)"
+		mkfifo $PIPE 2>/dev/null
+		
+		cat $PIPE | $cmd1 & $cmdOrig | tee $PIPE | $cmd2 #The magic of simultaneous execution ^_^
+		#~ cat $PIPE | tr 'e' 'a' & echo 'hello' | tee $PIPE | tr 'e' 'o' #The magic of simultaneous execution ^_^
+	}

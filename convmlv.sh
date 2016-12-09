@@ -24,7 +24,7 @@
 #~ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 #~ SOFTWARE.
 
-VERSION="2.1.0a2" #Version string.
+VERSION="2.1.0a3" #Version string.
 INPUT_ARGS=$(echo "$@") #The original input argument string.
 
 if [ $# == 0 ]; then #No given arguments.

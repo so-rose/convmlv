@@ -1,5 +1,10 @@
 [code]
 
+[b]v2.0.1[/b]: I'm back! Did some quick fixes. Also, there is now a bundled tarball available - no need to mess around with manual dependencies yourself anymore.
+[size=8pt]*Updated PDF with all new features. Nothing is unexplained, now![/size]
+[size=8pt]*Added some Mac compatibility.[/size]
+[size=8pt]*DNG sequences now use symlinks instead of copying.[/size]
+[size=8pt]*Fixed DNG sequence bug.[/size]
 
 [b]v2.0.0[/b]: I think convmlv is the stablest it's ever been! Though I'm sure there's plenty more bugs to discover :).
 [size=8pt]*Color Management: Real, 3D LUT-based gamma/gamut choices! See -g/-G. There is now minimal quality loss from sensor to image. Adds a dependency: color-core. [/size]

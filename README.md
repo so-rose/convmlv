@@ -1,6 +1,6 @@
 # convmlv #
 
-RAW ML Formats to Workable Images/Movies Developer
+RAW Formats (Magic Lantern) to Images/Movies Developer
 =======
 I needed a workflow to provide me full control over development for filmmaking with Magic Lantern (beyond mlrawviewer's excellent preview!), while keeping things simple by providing defaults for everything.
 
@@ -39,6 +39,6 @@ Especially the PDF is designed as a tutorial; take a look!
 ## Development
 To build the PDF and MANPAGE using LATEX, run `docs/buildDocs.sh`. You can clean it up using `docs/cleanDocs.sh`.
 
-To make a release tarball, simply place all the manual binary deps into the `binaries` dir and run `./mkrelease.sh`.
+To make a release tarball, simply place all the manual binary deps into the `binaries` dir and run `./mkrelease.sh`. Optionally, you can call `./mkrelease bare` to make a release without included examples.
 
 The source code is located in `src`, where you'll find bash and Python code, as well as the builtin plugins. convmlv.sh itself imports all the src's, and acts as a kind of program selector; develop is but one option.

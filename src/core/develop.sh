@@ -123,9 +123,9 @@ develop() {
 #Establish Basic Directory Structure.
 	OUTDIR=$(readlinkF "$OUTDIR")
 	
-	if [ $OUTDIR != $PWD ] && [ $isOutGen == false ]; then
-		mkdir -p $OUTDIR #NO RISKS. WE REMEMBER THE LUT.py. RIP ad-hoc HALD LUT implementation :'( .
-		isOutGen=true
+	if [ $OUTDIR != $PWD ]; then
+		mkdir -p $OUTDIR
+		#NO RISKS. WE REMEMBER THE LUT.py. RIP ad-hoc HALD LUT implementation :'( .
 	fi
 	
 	local FILE="${OUTDIR}/${TRUNC_ARG}"

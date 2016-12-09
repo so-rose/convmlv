@@ -81,3 +81,11 @@ runSim() {
 		cat $PIPE | $cmd1 & $cmdOrig | tee $PIPE | $cmd2 #The magic of simultaneous execution ^_^
 		#~ cat $PIPE | tr 'e' 'a' & echo 'hello' | tee $PIPE | tr 'e' 'o' #The magic of simultaneous execution ^_^
 	}
+
+strArr() {
+	#usage: strArr arg1 arg2 ...
+	#desc: Formats the args into a string ready to insert into an associative array.
+	#return: A string ready to insert into an associative array.
+	
+	echo "TO BE WRITTEN"
+}

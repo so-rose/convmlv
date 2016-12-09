@@ -1,0 +1,43 @@
+Besides the tarball, you need a few external deps.
+
+For your distribution:
+
+First, install libc6:i386 for 64-bit systems.
+
+Debian: sudo apt-get install $(./convmlv.sh -K 0)
+Ubuntu: sudo apt-get install $(./convmlv.sh -K 1)
+Fedora: sudo yum install $(./convmlv.sh -K 2)
+Mac (Homebrew): brew install $(./convmlv.sh -K 3)
+
+For Python (make sure you're using python3):
+
+sudo python3 -m pip install $(./convmlv -Y)
+
+
+Binary Source Code, distributed under GPLv2:
+
+# Copyright (C) 2016 Magic Lantern Team
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the
+# Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor,
+# Boston, MA  02110-1301, USA.
+#/
+
+Source code found at links below:
+
+mlv2badpixels.sh: http://www.magiclantern.fm/forum/index.php?topic=16054
+raw2dng: http://www.magiclantern.fm/forum/index.php?topic=5404.0
+mlv_dump: http://www.magiclantern.fm/forum/index.php?topic=7122.0
+cr2hdr: http://www.magiclantern.fm/forum/index.php?topic=7139.0

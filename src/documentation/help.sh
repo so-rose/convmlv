@@ -52,8 +52,6 @@ $(head "OPTIONS, BASIC:")
 	--raw-dump <path>	$(cVal RAW_DUMP) - The path to raw2dng.
 	--badpixels <path>	$(cVal MLV_BP) - The path to mlv2badpixels.sh (by dfort).
 	--cr-hdr <path>		$(cVal CR_HDR) - The path to cr2hdr.
-	--srange <path>	 	$(cVal SRANGE) - The path to sRange.py.
-	--balance <path>	$(cVal BAL) - The path to balance.py.
 	--python <path>		$(cVal PYTHON) - The path or command used to invoke Python 3. Default is python3 on Linux, python on Mac.
 	
 	-T, --threads [int]	$(cVal THREADS) - Override amount of utilized process threads. Default is MAX - 1.

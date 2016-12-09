@@ -2,10 +2,12 @@
 
 #desc: All config and command line parsing happens here.
 
+#MAIN FUNCTIONS
+
 parseConf() {
-	file=$1 #The File to Parse
-	argOnly=$2 #If true, will only use file-specific blocks. If false, will ignore file-specific blocks.
-	CONFIG_NAME="None"
+	local file=$1 #The File to Parse
+	local argOnly=$2 #If true, will only use file-specific blocks. If false, will ignore file-specific blocks.
+	local CONFIG_NAME="None"
 	
 	if [[ -z $file ]]; then return; fi
     if [[ ! -f $file ]]; then return; fi
@@ -46,9 +48,7 @@ parseConf() {
 				;;
 				"MLV_BP") MLV_BP=`echo "${line}" | cut -d$' ' -f2`
 				;;
-				"SRANGE") CR_HDR=`echo "${line}" | cut -d$' ' -f2`
-				;;
-				"BAL") PYTHON_SRANGE=`echo "${line}" | cut -d$' ' -f2`; setPaths
+				"CR_HDR") CR_HDR=`echo "${line}" | cut -d$' ' -f2`
 				;;
 				"PYTHON") PYTHON=`echo "${line}" | cut -d$' ' -f2`; setPaths
 				;;
@@ -96,7 +96,7 @@ parseConf() {
 					proxy_num=`echo "$PROXY_SCALE" | cut -d'%' -f 1`
 					if [[ ! ( ($proxy_num -le 100 && $proxy_num -ge 5) && $proxy_num =~ ^-?[0-9]+$ ) ]]; then invOption "Invalid Proxy Scale: ${PROXY_SCALE}"; fi
 				;;
-				"KEEP_DNGS") KEEP_DNGS=true
+				"KEEP_RAWS") KEEP_DNGS=true
 				;;
 				"FRAME_RANGE") RANGE_BASE=`echo "${line}" | cut -d$' ' -f2`; isFR=false
 				;;

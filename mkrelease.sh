@@ -11,18 +11,16 @@ VERSION=$(echo "$(./convmlv.sh -v)" | sed -e 's/\./\_/g')
 ## It's reccommended that BINPATH is a folder in REP_PATH.
 
 REP_PATH="$(pwd)"
-BINPATH="${REP_PATH}/binaries"
 RELEASE="${REP_PATH}/release"
 
 mkdir -p "$RELEASE"
 
 if [[ $OSTYPE == "linux-gnu" ]]; then
 	PLATFORM="linux"
-elif [[ $OSTYPE == "darwin11" ]]; then
+elif [[ $OSTYPE == "darwin11" || $OSTYPE == "darwin15" ]]; then
 	PLATFORM="mac"
 else
 	echo "Platform not yet supported! Contact me at contact@sofusrose.com."
 fi
 
-cd "$BINPATH"
-tar -czvf $RELEASE/convmlv-${VERSION}-${PLATFORM}.tar.gz ../balance.py mlv2badpixels.sh mlv_dump raw2dng cr2hdr ../sRange.py ../CHANGELOG ../licence ../convmlv.sh ../color-core/ ../color-ext ../DEPENDENCIES ../docs/MANPAGE ../docs/docs.pdf ../docs/workflow.txt ../configs/*
+tar -czvf $RELEASE/convmlv-${VERSION}-${PLATFORM}.tar.gz balance.py mlv2badpixels.sh mlv_dump raw2dng cr2hdr sRange.py CHANGELOG licence convmlv.sh color-core/ color-ext DEPENDENCIES docs/MANPAGE docs/docs.pdf docs/workflow.txt configs/*

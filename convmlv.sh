@@ -66,7 +66,7 @@ INPUT_ARGS=$(echo "$@") #The original input argument string.
 
 if [[ $OSTYPE == "linux-gnu" ]]; then
 	THREADS=$(cat /proc/cpuinfo | awk '/^processor/{print $3}' | tail -1)
-elif [[ $OSTYPE == "darwin11" ]]; then
+elif [[ $OSTYPE == "darwin11" || $OSTYPE == "darwin15" ]]; then
 	THREADS=$(sysctl -n hw.ncpu)
 else
 	THREADS=4
@@ -119,7 +119,7 @@ setDefaults() { #Set all the default variables. Run here, and also after each AR
 	MAN_DEPS="mlv_dump raw2dng cr2hdr mlv2badpixels.sh balance.py sRange.py color-core"
 	if [[ $OSTYPE == "linux-gnu" ]]; then
 		PYTHON="python3"
-	elif [[ $OSTYPE == "darwin11" ]]; then
+	elif [[ $OSTYPE == "darwin11" || $OSTYPE == "darwin15" ]]; then
 		PYTHON="python3"
 	else
 		PYTHON="python"
@@ -1486,7 +1486,7 @@ mlvSet() {
 	ISO=`echo "$camDump" | grep 'ISO' | sed 's/[[:alpha:] ]*:        //' | cut -d$'\n' -f2`
 	APERTURE=`echo "$camDump" | grep 'Aperture' | sed 's/[[:alpha:] ]*:    //' | cut -d$'\n' -f1`
 	LEN_FOCAL=`echo "$camDump" | grep 'Focal Len' | sed 's/[[:alpha:] ]*:   //' | cut -d$'\n' -f1`
-	SHUTTER=`echo "$camDump" | grep 'Shutter' | sed 's/[[:alpha:] ]*:   //' | grep -oP '\(\K[^)]+' |  cut -d$'\n' -f1`
+	SHUTTER=`echo "$camDump" | grep 'Shutter' | sed 's/[[:alpha:] ]*:   //' | grep -E '\(\K[^)]+' |  cut -d$'\n' -f1`
 	REC_DATE=`echo "$camDump" | grep 'Date' | sed 's/[[:alpha:] ]*:        //' | cut -d$'\n' -f1`
 	REC_TIME=`echo "$camDump" | grep 'Time:        [0-2][0-9]\:*' | sed 's/[[:alpha:] ]*:        //' | cut -d$'\n' -f1`
 	KELVIN=`echo "$camDump" | grep 'Kelvin' | sed 's/[[:alpha:] ]*:   //' | cut -d$'\n' -f1`
@@ -1886,7 +1886,7 @@ for ARG in "${FILE_ARGS_ITER[@]}"; do #Go through FILE_ARGS_ITER array, copied f
 				$2 $3 $4 -o "${tmpOut}/${9}_" -f ${range} $6 --dng --batch | { #mlv_dump command. Uses frame range.
 					lastCur=0
 					while IFS= read -r line; do
-						output=$(echo $line | grep -Po 'V.*A' | cut -d':' -f2 | cut -d$' ' -f1) #Hacked my way to the important bit.
+						output=$(echo $line | grep -E 'V.*A' | cut -d':' -f2 | cut -d$' ' -f1) #Hacked my way to the important bit.
 						if [[ $output == "" ]]; then continue; fi #If there's no important bit, don't print.
 						
 						cur=$(echo "$output" | cut -d'/' -f1) #Current frame.

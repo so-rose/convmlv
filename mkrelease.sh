@@ -21,9 +21,10 @@ RELEASE="${REP_PATH}/release"
 
 mkdir -p "$RELEASE"
 
+#Determine Platform
 if [[ $OSTYPE == "linux-gnu" ]]; then
 	PLATFORM="linux"
-elif [[ $OSTYPE == "darwin11" ]]; then
+elif [[ $OSTYPE == "darwin11" || $OSTYPE == "darwin15" ]]; then
 	PLATFORM="mac"
 else
 	echo "Platform not yet supported! Contact me at contact@sofusrose.com."
@@ -31,9 +32,11 @@ fi
 
 TARBALL="$RELEASE/convmlv-${VERSION}-${PLATFORM}.tar.gz"
 
+#Build Docs
 $DOCPATH/cleanDocs.sh > /dev/null
 $DOCPATH/buildDocs.sh > /dev/null
 
+#Make tarball
 cd $REP_PATH
 case $TYPE in
 	examples)
@@ -46,6 +49,7 @@ case $TYPE in
 		;;
 esac
 
+#Sign & Verify
 gpg -b "$TARBALL"
 
 $DOCPATH/cleanDocs.sh > /dev/null

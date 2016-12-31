@@ -20,6 +20,7 @@ indent_mode=2
 [project]
 name=convmlv
 base_path=/home/sofus/subhome/src/convmlv
+description=
 
 [long line marker]
 long_line_behaviour=1
@@ -27,11 +28,11 @@ long_line_column=72
 
 [files]
 current_page=4
-FILE_NAME_0=14583;Sh;0;EUTF-8;1;1;0;%2Fhome%2Fsofus%2Fsubhome%2Fsrc%2Fconvmlv%2Fsrc%2Fcore%2Fdevelop.sh;0;4
+FILE_NAME_0=15352;Sh;0;EUTF-8;1;1;0;%2Fhome%2Fsofus%2Fsubhome%2Fsrc%2Fconvmlv%2Fsrc%2Fcore%2Fdevelop.sh;0;4
 FILE_NAME_1=3473;Sh;0;EUTF-8;1;1;0;%2Fhome%2Fsofus%2Fsubhome%2Fsrc%2Fconvmlv%2Fsrc%2Fcore%2Fparsing.sh;0;4
 FILE_NAME_2=1070;Sh;0;EUTF-8;1;1;0;%2Fhome%2Fsofus%2Fsubhome%2Fsrc%2Fconvmlv%2Fsrc%2Fcore%2FargFuncs.sh;0;4
 FILE_NAME_3=3159;Sh;0;EUTF-8;1;1;0;%2Fhome%2Fsofus%2Fsubhome%2Fsrc%2Fconvmlv%2Fconvmlv.sh;0;4
-FILE_NAME_4=8629;Sh;0;EUTF-8;1;1;0;%2Fhome%2Fsofus%2Fsubhome%2Fsrc%2Fconvmlv%2Fsrc%2Fcore%2Fproc.sh;0;4
+FILE_NAME_4=1199;Sh;0;EUTF-8;1;1;0;%2Fhome%2Fsofus%2Fsubhome%2Fsrc%2Fconvmlv%2Fsrc%2Fcore%2Fproc.sh;0;4
 FILE_NAME_5=2653;Sh;0;EUTF-8;1;1;0;%2Fhome%2Fsofus%2Fsubhome%2Fsrc%2Fconvmlv%2Fsrc%2Fdocumentation%2Fhelp.sh;0;4
 FILE_NAME_6=0;Sh;0;EUTF-8;1;1;0;%2Fhome%2Fsofus%2Fsubhome%2Fsrc%2Fconvmlv%2Fsrc%2Fdocumentation%2FTODO.sh;0;4
 FILE_NAME_7=0;Sh;0;EUTF-8;1;1;0;%2Fhome%2Fsofus%2Fsubhome%2Fsrc%2Fconvmlv%2Fsrc%2Fhelpers%2Ferror.sh;0;4
@@ -41,6 +42,7 @@ FILE_NAME_10=2653;Sh;0;EUTF-8;1;1;0;%2Fhome%2Fsofus%2Fsubhome%2Fsrc%2Fconvmlv%2F
 FILE_NAME_11=0;Sh;0;EUTF-8;1;1;0;%2Fhome%2Fsofus%2Fsubhome%2Fsrc%2Fconvmlv%2Fsrc%2FimgProcessing%2FimgMath.sh;0;4
 FILE_NAME_12=0;Sh;0;EUTF-8;1;1;0;%2Fhome%2Fsofus%2Fsubhome%2Fsrc%2Fconvmlv%2Fsrc%2Fprograms%2Fcaliframe.sh;0;4
 FILE_NAME_13=1;Sh;0;EUTF-8;1;1;0;%2Fhome%2Fsofus%2Fsubhome%2Fsrc%2Fconvmlv%2Fsrc%2Fprograms%2FshotSettings.sh;0;4
+FILE_NAME_14=0;Python;0;EUTF-8;1;1;0;%2Fhome%2Fsofus%2Fsubhome%2Fsrc%2Fconvmlv%2Fsrc%2FimgProcessing%2Fbalance.py;0;4
 
 [VTE]
 last_dir=/home/sofus

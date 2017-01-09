@@ -13,7 +13,7 @@ I use it myself :D so here's some shorts with it (back at v1.7) in action!!
 http://youtu.be/yi-G7sXHB1M
 http://youtu.be/yi-G7sXHB1M
 
-See the primary development repo on my GitLab: https://git.sofusrose.com/so-rose/convmlv
+*See the primary development repo on my GitLab: https://git.sofusrose.com/so-rose/convmlv*
 
 ## Installation
 Supported platforms are Linux and Mac. To install, copy/paste the following into a terminal:

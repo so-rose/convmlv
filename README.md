@@ -13,6 +13,8 @@ I use it myself :D so here's some shorts with it (back at v1.7) in action!!
 http://youtu.be/yi-G7sXHB1M
 http://youtu.be/yi-G7sXHB1M
 
+See the primary development repo on my GitLab: https://git.sofusrose.com/so-rose/convmlv
+
 ## Installation
 Supported platforms are Linux and Mac. To install, copy/paste the following into a terminal:
 
@@ -21,7 +23,6 @@ Supported platforms are Linux and Mac. To install, copy/paste the following into
     * For Debain, use the number "0"
     * For Fedora, replace `apt-get` with `yum` and use the number "2".
     * For Mac, replace `sudo apt-get` with `brew` and use the number "3". *Requires Homebrew to be installed.
-
 3. **Install Python deps**: `sudo python3 -m pip install $ (./convmlv.sh -Y)`
 4. (Optional) **Add to Path**: `sudo ln -s $(pwd)/convmlv.sh /usr/local/bin/convmlv`
 

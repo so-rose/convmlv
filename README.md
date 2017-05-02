@@ -16,6 +16,8 @@ See [http://www.magiclantern.fm/forum/index.php?topic=16799.0](http://www.magicl
 
 **The pdf found in the source and in the release, under docs->docs.pdf, is up to date. Refer to it for tutorials, tips, documentation, etc.!!**
 
+**Quick Fix**: On Mac, running `brew install --with-default-names grep` may fix the MLV --> DNG lag, as reported by @mutex1980.
+
 Full help page is below:
 
 ```text

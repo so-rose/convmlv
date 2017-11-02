@@ -2372,7 +2372,7 @@ for ARG in "${FILE_ARGS_ITER[@]}"; do #Go through FILE_ARGS_ITER array, copied f
 			oldFiles="${TMP}/orig_dng"
 			find $oldFiles -name "*.dng" | xargs -I '{}' mv {} $DNG #Preserve the original, unprocessed DNGs.
 		else
-			find $TMP -name "*.dng" | xargs -I '{}' mv {} $DNGv
+			find $TMP -name "*.dng" | xargs -I '{}' mv {} $DNG
 		fi
 	fi
 	

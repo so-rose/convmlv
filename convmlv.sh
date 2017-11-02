@@ -60,6 +60,9 @@
 #~ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 #~ SOFTWARE.
 
+## Ensure globbing is enabled.
+set +f
+
 #BASIC VARS
 VERSION="2.0.1" #Version string.
 INPUT_ARGS=$(echo "$@") #The original input argument string.
@@ -1877,8 +1880,8 @@ for ARG in "${FILE_ARGS_ITER[@]}"; do #Go through FILE_ARGS_ITER array, copied f
 					firstFrame=true
 				fi
 				
-				tmpOut=${7}/${range} #Each output will number from 0, so give each its own folder.
-				mkdir -p $tmpOut
+				tmpOut="${7}/${range}" #Each output will number from 0, so give each its own folder.
+				mkdir -p "$tmpOut"
 				
 				start=$(echo "$range" | cut -d'-' -f1)
 				end=$(echo "$range" | cut -d'-' -f2) #Get start and end frames from the frame range

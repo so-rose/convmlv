@@ -1,5 +1,21 @@
 [code]
 
+[b]v2.0.2[/b]: Some fundamental & bug fixes, as well as now being tested to work with new compressed output.
+[size=8pt]*Fixed some mlv_dump versions wouldn't detect # of frames.[/size]
+[size=8pt]*Added set +f to ensure globbing is always enabled. Added a commented set -e to kill on error, which I intend to activate for 2.1.0.[/size]
+[size=8pt]*Removed all for-loop globbing and replaced with 'find' subcommands. Should remove a class of 'set +f'-related bugs.[/size]
+[size=8pt]*Added --relaxed to every mlv_dump invocation, so it won't freak out and develop nothing at the slightest touch of corruption.[/size]
+[size=8pt]*Updated help page & PDF for clarity.[/size]
+[size=8pt]*Fixed the LUTs - they were processing a too large (extended) range, at 0 benefit to color fidelity and to the detriment of output quality.[/size]
+[size=8pt]*Clarified that convmlv's (really, dcraw's) XYZ output is a D65 space, not D50 as it's specced to.[/size]
+[size=8pt]*We now depend specifically on @bouncyball's mlv_dump, as that's the only one I can guarantee works with compressed footage.[/size]
+[size=8pt]*Get the required mlv_dump here: https://www.magiclantern.fm/forum/index.php?topic=18975.0 .[/size]
+
+[b]v2.0.1[/b]: I'm back! Did some quick fixes. Also, there is now a bundled tarball available - no need to mess around with manual dependencies yourself anymore.
+[size=8pt]*Updated PDF with all new features. Nothing is unexplained, now![/size]
+[size=8pt]*Added some Mac compatibility.[/size]
+[size=8pt]*DNG sequences now use symlinks instead of copying.[/size]
+[size=8pt]*Fixed DNG sequence bug.[/size]
 
 [b]v2.0.0[/b]: I think convmlv is the stablest it's ever been! Though I'm sure there's plenty more bugs to discover :).
 [size=8pt]*Color Management: Real, 3D LUT-based gamma/gamut choices! See -g/-G. There is now minimal quality loss from sensor to image. Adds a dependency: color-core. [/size]

@@ -1,31 +1,38 @@
 #!/bin/bash
 
-#TODO:
-
 #PLANNING:
-#	Except for openlut integration, CM fixes, and the last throes of Mac compatibility, I consider convmlv feature-complete. As in, only bug fixes and error checking.
-#	New developments, like special ffmpeg filters, or new techniques from the ML world, may change that. But that's nothing compared to the 2400 lines this pushes at the moment!
-#	Any further effort is better focused on compatibility, bug fixes, error checking, more bug fixes, and finally a GUI app described in FUTURE.
+#	Constant bug fixes, compatibility, error checking. Pushing thousands of lines of only-decent bash isn't very stable.
+#	All releases must be documented in the PDF. Major releases should have a video.
+#	convmlv 2.X has some features left for itself.
 
 
 #~ TOP PRIORITY
-#~ --> Fix Color Management; -o 5 is broken. Use -o 0, supplemented by current paradigm of Rec709 -> Whatever LUTs, instead of XYZ -> Whatever LUTs.
+#~ --> Fix Color Management pipeline, with the help of OCIO.
+#~ 		* New pipeline: RAW --(Demo/WB)--> Cam Space @ WB --(ICC)--> CIE XYZ --(Color)--> Final Space ( --(Filter)--> Final Look --(Encode)--> Output)
+#~ 		* The Demo/WB application is mlv_dump/mlvfs, maybe cr2hdr, then dcraw.
+#~ 		* The ICC application is convert (ImageMagick).
+#~ 		* The Color application is OpenImageIO.
+#~ 		* -I: Specify a number to assume the Camera's Space, or (better) the path to an ICC profile profiling the camera's response.
+#~ 		* -G: Specify the Final Space (as a string matching the OCIO name).
+#~ 		* -g: Force the Final Space into linearity (0 means use the normal Final Space, 1 means force linear).
+#~ --> Move MLV - Specify --move-mlv to move the MLV file into "mlv_<TRUNC_ARG>", for organizational reasons.
+#~ --> Store Development Config - By default, we should store a config file "<TRUNC_ARG>.conf" containing all the settings needed to redevelop the same way from the same file.
 #~ --> MLVFS backend - run the mlvfs command, passing whatever options it supports, then rewrite ARG. Give an option to choose mlv_dump or mlvfs, and an option for a custom path to mlvfs.
-#~ *Consider using dcraw for darkframing, through the -K option. Requires a develop from MLV, then a convert to raw PGM, first.
-#~ --> Darkframe library - place in $HOME/.local/convmlv, perhaps.
+#~		* Give the -k option some more power when using MLVFS: Link MLVFS' instant DNGs into dng_<TRUNC_ARG>.
+#~		* If -k is specified, and --move-mlv is not specified, copy the MLV into mlv_<TRUNC_ARG>.
+#~		* 'convmlv -U': Run in the folder  of the <TRUNC_ARG> mounting DNGs, at dng_<TRUNC_ARG> to unmount the DNGs & delete the links.
+#~		* 'convmlv -U': Run in the folder of the <TRUNC_ARG> not mounting DNGs, to remount at dng_<TRUNC_ARG>, relying on "<TRUNC_ARG>.conf" to reproduce settings.
+#~		* Why copy the MLV? Wanting DNG access means keeping the raw footage around in some way. If that's not going to be the DNGs, it has to be the MLV.
 
 #~ HIGH PRIORITY
-#~ --> Retest Darkframe subtraction with preaveraged/naked darkframe MLVs.
-#~ --> Integrate openlut for 1D LUTs. 3D LUTs would only be used for gamut transforms, not gamut/gamma.
-#~ --> More error checking.
-#~ --> Test Mac compatibility with a *working* (with 10.7) mlv_dump...
-#~ --> Documentation: PDF and Videos.
+#~ --> Anamorphic Resizing (just add '-resize (100 * resize_fac)%x100%' to any 'convert', where resize_fac is 1.33, 1.5, or 2.0).
+#~ --> Cut output Audio based on start/end frame.
+#~ --> CR2 Support
 
 #~ MEDIUM PRIORITY
-#~ --> Integrate openlut for gamut ops. Matrices would replace standard 3D LUTs altogether, and openlut would handle 3D LUTs.
-
-#~ LOW
-#~ --> Stats for .RAW files.
+#~ --> Move helper scripts/binaries to "binaries".
+#~ --> Calibration frame library, located in $HOME/convmlv/cali_lib. See Issue #12.
+#~ --> Preview Mode - live-update a preview window.
 
 
 #~ FUTURE
@@ -60,11 +67,11 @@
 #~ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 #~ SOFTWARE.
 
-## Ensure globbing is enabled.
-set +f
+set +f ## Ensure globbing is enabled.
+#~ set -e ## Stop script if something dies.
 
 #BASIC VARS
-VERSION="2.0.1" #Version string.
+VERSION="2.0.2" #Version string.
 INPUT_ARGS=$(echo "$@") #The original input argument string.
 
 if [[ $OSTYPE == "linux-gnu" ]]; then
@@ -257,32 +264,47 @@ Usage:
 	
 $(head "INFO:")
 	A program allowing you to develop ML files into workable formats. Many useful options are exposed.
-	  --> Defaults: Compressed 16-bit Linear EXR. 10-bit Prores4444 MOV.
-	  --> Color Defaults: Linear (1.0) Gamma on sRGB Gamut, using Camera White Balance.
+	  --> $(cVal Defaults): Compressed 16-bit Linear EXR. 10-bit Prores4444 MOV.
+	  --> $(cVal "Color Defaults"): Linear (1.0) Gamma on sRGB Gamut, using Camera White Balance.
 	  
-	  --> Acceptable Inputs: MLV, RAW (requires raw2dng), Folder containing DNGs.
-	  --> Option Input: From command line or config file (specify with -C).
+	  --> $(cVal "Acceptable Inputs"): MLV (10/12/14 bit, compressed or not), RAW (requires raw2dng), Folder containing DNGs.
+	  --> $(cVal "Option Input"): From command line or config file (specify with -C).
 	  
-	  --> Forum Post: http://www.magiclantern.fm/forum/index.php?topic=16799.
-	  --> A note: BE CAREFUL WITH OPTIONS. Wrong values will give very strange errors. Read this page well!!
+	  --> $(cVal "Forum Post"): http://www.magiclantern.fm/forum/index.php?topic=16799 .
+	  --> A note: $(iVal "BE CAREFUL WITH OPTIONS"). Wrong values can give $(iVal "very strange errors"). Read this page well!!
 	  
-	It's as simple or complex as you need it to be: 'convmlv -m <mlvfile>.mlv' is enough for good-looking output!
+	convmlv is as simple or complex as you need it to be: 'convmlv -m <mlvfile>.mlv' is enough for good-looking output!
+	
+	Thank you to the entire Magic Lantern community! This tool merely strings together their tools, without which,
+	convmlv would have been entirely impossible.
 	
 $(echo -e "$(head VERSION): ${VERSION}")
 	
 $(head "MANUAL DEPENDENCIES:")
-	Place these in RES_PATH (see OPTIONS, BASIC). Keep in mind you also need dist. and pip packages.
+	Place all of these in RES_PATH (see OPTIONS, BASIC). Keep in mind that you will also need dist. and pip packages.
 	  --> See 'Dist Deps' and 'Python Deps'
 
-	-- mlv_dump: Required binary. http://www.magiclantern.fm/forum/index.php?topic=7122.0
-	-- color-core: Required folder of LUTs. See convmlv repository.
-	-- sRange.py: Required script. See convmlv repository.
+	-- $(cVal "mlv_dump (@bouncyball's)"): Required; binary. $(iVal "YOU NEED THIS SPECIFIC VERSION.").
+	   --> Only download @bouncyball's version: https://www.magiclantern.fm/forum/index.php?topic=18975.0 .
+	   --> $(iVal "IF YOU DO NOT DOWNLOAD THIS SPECIFIC VERSION, YOU MAY BE UNABLE TO DEVELOP COMPRESSED MLVs!")
+	-- $(cVal color-core): Required; folder of LUTs.
+	   --> See convmlv repository.
+	-- $(cVal sRange.py): Required; script.
+	   --> See convmlv repository.
 	
-	-- raw2dng: For DNG extraction from RAW. http://www.magiclantern.fm/forum/index.php?topic=5404.0
-	-- mlv2badpixels.sh: For bad pixel removal. https://bitbucket.org/daniel_fort/ml-focus-pixels/src
-	-- cr2hdr: For Dual ISO Development. Two links: http://www.magiclantern.fm/forum/index.php?topic=16799.0
-	-- balance.py: For Auto White Balance. See convmlv repository.
-	-- color-ext: Extra LUTs, providing more color resources. See convmlv repository.
+	-- $(cVal raw2dng): Optional; for DNG extraction from RAW.
+	   --> Original forum post w/source code: http://www.magiclantern.fm/forum/index.php?topic=5404.0 .
+	   --> Linux users can download from: http://www.magiclantern.fm/forum/index.php?topic=9335.0 .
+	-- $(cVal mlv2badpixels.sh): Optional; for bad pixel removal. Thanks to @dfort!
+	   --> Download from the scripts_archive folder at this link: https://bitbucket.org/daniel_fort/ml-focus-pixels/src
+	-- $(cVal cr2hdr): Optional; for Dual ISO Development.
+	   --> Original forum post w/source code: http://www.magiclantern.fm/forum/index.php?topic=7139.0 .
+	   --> Linux users can download from: http://www.magiclantern.fm/forum/index.php?topic=9335.0 .
+	   --> Mac users can find the Mac binary in the latest zip: https://bitbucket.org/kichetof/lr_cr2hdr/downloads/ .
+	-- $(cVal balance.py): Optional; for Auto White Balance.
+	   --> See convmlv repository.
+	-- $(cVal color-ext): Optional; extra LUTs, providing more color management resources.
+	   --> See convmlv repository.
 
 $(head "OPTIONS, BASIC:")
 	-v, --version		$(bVal version) - Print out version string.
@@ -291,19 +313,19 @@ $(head "OPTIONS, BASIC:")
 	-C, --config		$(bVal config) - Designates config file to use.
 	
 	-o, --outdir <path>	$(cVal OUTDIR) - The path in which files will be placed.
-	-P, --res-path <path>	$(iVal RES_PATH) - The path in which all manual dependencies are looked for.
-	  --> Default: Current Directory.
+	-P, --res-path <path>	$(iVal RES_PATH) - The path in which all Manual Dependencies are looked for.
+	  --> Default: Current Directory (.) .
 	
 	--dcraw <path>		$(cVal DCRAW) - The path to dcraw.
 	--mlv-dump <path>	$(cVal MLV_DUMP) - The path to mlv_dump.
 	--raw-dump <path>	$(cVal RAW_DUMP) - The path to raw2dng.
-	--badpixels <path>	$(cVal MLV_BP) - The path to mlv2badpixels.sh (by dfort).
+	--badpixels <path>	$(cVal MLV_BP) - The path to mlv2badpixels.sh .
 	--cr-hdr <path>		$(cVal CR_HDR) - The path to cr2hdr.
 	--srange <path>	 	$(cVal SRANGE) - The path to sRange.py.
 	--balance <path>	$(cVal BAL) - The path to balance.py.
 	--python <path>		$(cVal PYTHON) - The path or command used to invoke Python 3. Default is python3 on Linux, python on Mac.
 	
-	-T, --threads [int]	$(cVal THREADS) - Override amount of utilized process threads. Default is MAX - 1.
+	-T, --threads [int]	$(cVal THREADS) - Override amount of utilized process threads. Default is ALL - 1.
 	
 	
 $(head "OPTIONS, OUTPUT:")
@@ -318,7 +340,7 @@ $(head "OPTIONS, OUTPUT:")
 	  --> 0: No proxies (Default). 1: H.264 proxy. 2: JPG proxy sequence. 3: Both.
 	  
 	  --> JPG proxy will always be in sRGB Gamma/sRGB Gamut. H.264 proxy is color managed.
-	  --> JPG proxy *won't* be developed w/o IMAGE. H.264 proxy *will* be developed no matter what, if specified here.
+	  --> JPG proxy *won't* ever be developed w/o IMAGE. H.264 proxy *will*, if specified, be developed no matter what.
 	  --> Why? JPG is for potential use in editing. H.264 is for a quick visual preview of convmlv's output.
 	
 	-s [0%:100%]		$(cVal PROXY_SCALE) - the size, in %, of the proxy output.
@@ -330,11 +352,11 @@ $(head "OPTIONS, OUTPUT:")
 	-r <start>-<end>	$(cVal FRAME_RANGE) - Specify to process an integer frame range.
 	  --> You may use the characters 's' and 'e', such that s = start frame, e = end frame.
 	  --> Indexed from 0 to (# of frames - 1). Develops from 1 to ($ of frames)
-	  --> A single number may be writted to develop that single frame.
+	  --> $(cVal "If a single # is written"), without a -, that frame alone will be developed.
 	  --> DO NOT try to reuse DNGs while developing a larger frame range.
 	
 	
-	--uncompress		$(cVal UNCOMP) - Turns off lossless image compression. Otherwise:
+	--uncompress		$(cVal UNCOMP) - Turns off lossless image compression. Otherwise, this compression is used:
 	  --> TIFF: ZIP, EXR: PIZ, PNG: lvl 0, DPX: RLE.
 	
 	
@@ -345,12 +367,13 @@ $(head "OPTIONS, RAW DEVELOPMENT:")
 	-f			$(cVal FOUR_COLOR) - Interpolate as RGBG. Fixes weirdness with VNG/AHD, at the cost of sharpness.
 	
 	-H [0:9]		$(cVal HIGHLIGHT_MODE) - Highlight management options.
-	  --> 0: White, clipped highlights. 1: Unclipped but colored highlights. 2: The defail of 1, but adjusted to grey.
+	  --> 0: White, clipped highlights. 1: Unclipped but colored highlights. 2: The detail of 1, but adjusted to grey.
 	  --> 3-9: Highlight reconstruction. Can cause flickering. Start at 5, then adjust to color (down) or to white (up).
+	  --> Option #2 is mostly the best - the desaturation of highlights is very filmic, and preserves the most detail.
 	
 	-c [0:3]		$(cVal CHROMA_SMOOTH) - Apply shadow/highlight chroma smoothing to the footage.
 	  --> 0: None (default). 1: 2x2. 2: 3x3. 3: 5x5.
-	  --> MLV input Only.
+	  --> MLV Input Only. Won't trigger for other input types.
 	
 	-n [int]		$(cVal WAVE_NOISE) - Apply wavelet denoising.
 	  --> Default: None. Subtle: 25. Medium: 50. Strong: 125.
@@ -359,7 +382,7 @@ $(head "OPTIONS, RAW DEVELOPMENT:")
 	  --> A: 0 to 0.3. B: 0 to 5. A reacts to abrupt noise (splotches), B reacts to noise over time (fast motion causes artifacts).
 	  --> Subtle: 0.03-0.04. High: 0.15-0.04. High, Predictable Motion: 0.15-0.07
 	  
-	-Q [i-i:i-i]		$(cVal HQ_NOISE) - Apply 3D denoising filter.
+	-Q [i-i:i-i]		$(cVal HQ_NOISE) - Apply Handbrake's 3D denoising filter.
 	  --> In depth explanation: https://mattgadient.com/2013/06/29/in-depth-look-at-de-noising-in-handbrake-with-imagevideo-examples/ .
 	  --> Spacial/Temporal (S/T). S will soften/blur/smooth, T will remove noise without doing that but may create artifacts.
 	  --> Luma/Chroma (L/C). L is the detail, C is the color. Each one's denoising may be manipulated Spacially or Temporally.
@@ -373,9 +396,9 @@ $(head "OPTIONS, RAW DEVELOPMENT:")
 	  --> See https://ffmpeg.org/ffmpeg-filters.html#removegrain for list of modes.
 	  
 	  --> Option Value: <mode1>-<mode2>-<mode3>-<mode4>
-	  --> I truly cannot tell you what values will be helpful to you; there are too many... Look at the link!
+	  --> I truly cannot tell you what values will be helpful to you, as there are too many... Look at the link!
 	
-	--shallow 		$(cVal SHALLOW) - Output smaller, 8-bit files.
+	--shallow 		$(cVal SHALLOW) - Output smaller 8-bit files.
 	  --> Read why this is a bad idea: http://www.cambridgeincolour.com/tutorials/bit-depth.htm
 	
 	
@@ -387,12 +410,12 @@ $(head "OPTIONS, COLOR:")
 	  --> "Standard" grades to the gamut specification, and to 2.2 if that's not given.
 	  
 	-G [0:6]		$(cVal GAMUT) - Output gamut. The range of colors that can exist in the output.
-	  --> 0: sRGB (Default). 1: Adobe RGB. 2: Rec.709. 3: XYZ (Always Linear Gamma).
-	  --> Requires color-ext: 4: Rec2020 5: DCI-P3 6: Sony S-Gamut3.cine
+	  --> 0: sRGB (Default; D65). 1: Adobe RGB (D65). 2: Rec.709 (D65). 3: XYZ (Always Linear; D65).
+	  --> Requires color-ext: 4: Rec2020 (D65) 5: DCI-P3 (D65) 6: Sony S-Gamut3.cine (D65)
 
 	-w [0:2]		$(cVal WHITE) - This is a modal white balance setting.
-	  --> 0: Auto WB (requires balance.py). 1: Camera WB (default). 2: No Change.
-	  --> AWB uses the Grey's World algorithm.
+	  --> 0: Auto WB (requires balance.py). 1: Camera WB (default). 2: No WB Scaling of RAW output.
+	  --> AWB uses the Grey's World algorithm. Other algorithms are not currently available.
 	  
 	-A [i:i:i:i]		$(cVal SHARP) - Lets you sharpen, or blur, your footage.
 	  --> BE CAREFUL. Wrong values will give you strange errors.
@@ -406,28 +429,32 @@ $(head "OPTIONS, COLOR:")
 	-l <path>		$(cVal LUT) - Specify a LUT to apply after Color Management.
 	  --> Supports cube, 3dl, dat, m3d.
 	  --> Specify -l multiple times, to apply multiple LUTs in sequence.
+	  --> LUTs bigger than x64 or smaller than x17 are not supported, and won't apply.
 	  
-	-S [int]		$(cVal SATPOINT) - Specify the 14-bit uint saturation point of your camera. You don't usually need to.
-	  --> Worth setting globally, as it's a per-camera setting. Must be correct for highlight reconstruction/unclipped highlights.
-	  --> Lower from 15000 if -H1 yields purple highlights, until they turn white.
+	-S [int]		$(cVal SATPOINT) - Specify the integer saturation point of your camera. Adjust if you're getting purple highlights.
+	  --> It's worth setting in a config, as it's a per-camera setting. Must be correct for highlight reconstruction/unclipped highlights.
+	  --> How To Use: Start at & lower from a value of 15000 if "-H 1" yields purple highlights, until the highlights turn white.
+	  --> This setting is sometimes called "Raw White Point".
 	  --> You can determine the optimal value using the max pixel value of 'dcraw -D -j -4 -T'.
 	
-	--white-speed [int]	$(cVal WHITE_SPD) - Manually specify samples used to calculate AWB.
+	--white-speed [int]	$(cVal WHITE_SPD) - Manually specify the # of samples used to calculate AWB.
 	
-	--allow-white-clip	$(cVal WHITE_CLIP) - Let the White Balance multipliers clip.
+	--allow-white-clip	$(cVal WHITE_CLIP) - Let the White Balance multipliers clip. Usually no effect.
 	
 	
 $(head "OPTIONS, FEATURES:")
 	-D			$(cVal DESHAKE) - Auto-stabilize the video using ffmpeg's "deshake" module.
 	  --> You may wish to crop/scale the output later, to avoid edge artifacts.
 	
-	-u			$(cVal DUAL_ISO) - Process as dual ISO.
+	-u			$(cVal DUAL_ISO) - Process the footage as Dual ISO.
 	  --> Requires cr2hdr.
+	  --> Doesn't work for alternating frame HDR Video, where every other frame has a different ISO.
 	
 	-b			$(cVal BADPIXELS) - Fix focus pixels issue using dfort's script.
 	  --> Requires mlv2badpixels.sh.
 	
 	-a <path>		$(cVal BADPIXEL_PATH) - Use your own .badpixels file. Does NOT require mlv2badpixels.sh
+	  --> Why? Pixels die on your camera, and show up in footage. This lets you interpolate around these pixels.
 	  --> How to: http://www.dl-c.com/board/viewtopic.php?f=4&t=686
 	
 	-F <path>		$(cVal DARKFRAME) - This is the path to a "dark frame MLV"; effective for noise reduction.
@@ -446,16 +473,17 @@ $(head "OPTIONS, INFO:")
 	-K [0:3]		$(bVal "Dist Deps") - Output package dependecies, for use with common package managers.
 	  --> 0: Debian, 1: Ubuntu, 2: Fedora, 3: Homebrew (Mac)
 	
-	  --> Deps Install (Debian): sudo apt-get install \$(./convmlv.sh -K 0)
-	  --> Deps Install (Ubuntu): sudo apt-get install \$(./convmlv.sh -K 1)
-	  --> Deps Install (Fedora): sudo yum install \$(./convmlv.sh -K 2)
-	  --> Deps Install (Homebrew Mac): brew install \$(./convmlv.sh -K 3)
+	  --> Install Sys Dependencies (Debian): sudo apt-get install \$(./convmlv.sh -K 0)
+	  --> Install Sys Dependencies (Ubuntu): sudo apt-get install \$(./convmlv.sh -K 1)
+	  --> Install Sys Dependencies (Fedora): sudo yum install \$(./convmlv.sh -K 2)
+	  --> Install Sys Dependencies (Homebrew Mac): brew install \$(./convmlv.sh -K 3)
 	
 	-Y			$(bVal "Python Deps") - Lists Python dependencies. Works directly with pip.
-	  -->Install (Cross-Platform): sudo python3 -m pip install $ (./convmlv -Y)
+	  --> Install Python Dependencies (Cross-Platform): sudo python3 -m pip install $ (./convmlv -Y)
+	  --> It may complain about numpy not being found. To fix, just run this first: sudo python3 -m pip install numpy .
 	
 	-M			$(bVal "Manual Deps") - Lists manual dependencies, which must be downloaded by hand.
-	  --> Manually place all in RES_PATH. See http://www.magiclantern.fm/forum/index.php?topic=16799.0 .
+	  --> Manually place all in RES_PATH. See Manual Dependencies above.
 	
 	
 $(head "COLOR MANAGEMENT:")
@@ -1484,7 +1512,8 @@ mlvSet() {
 	FPS=`echo "$camDump" | grep FPS | awk 'FNR == 1 {print $3}'`
 			
 	CAM_NAME=`echo "$camDump" | grep 'Camera Name' | cut -d "'" -f 2`
-	FRAMES=`echo "$camDump" | awk '/Processed/ { print $2; }'` #Use actual processed frames as opposed to what the sometimes incorrect metadata thinks.
+	#~ FRAMES=`echo "$camDump" | awk '/Processed/ { print $2; }'` #Use actual processed frames as opposed to what the sometimes incorrect metadata thinks.
+	FRAMES=`echo "$camDump" | grep 'Frames Video' | sed 's/[[:alpha:] ]*: //'` #Some mlv_dumps don't show "Processed". In which case, yay metadata!
 	RES_IN=`echo "$camDump" | grep "Res" | sed 's/[[:alpha:] ]*:  //'`
 	ISO=`echo "$camDump" | grep 'ISO' | sed 's/[[:alpha:] ]*:        //' | cut -d$'\n' -f2`
 	APERTURE=`echo "$camDump" | grep 'Aperture' | sed 's/[[:alpha:] ]*:    //' | cut -d$'\n' -f1`
@@ -1513,7 +1542,7 @@ dngSet() { #Set as many options as the RAW spec will allow. Grey out the rest.
 	
 	if [[ -z $dngLoc ]]; then dngLoc="${ARG}"; fi
 	
-	for dng in $dngLoc/*.dng; do
+	for dng in $(find $dngLoc -maxdepth 1 -name "*.dng" -print0 | sort -z | xargs -r0 -I {} echo {}); do
 		dataDNG="$(pwd)/.datadng.dng"
 		cp $dng $dataDNG
 		break
@@ -1792,7 +1821,7 @@ for ARG in "${FILE_ARGS_ITER[@]}"; do #Go through FILE_ARGS_ITER array, copied f
 		setRange
 		
 		i=1
-		for dng in $ARG/*.dng; do
+		for dng in $(find $ARG -maxdepth 1 -name "*.dng" -print0 | sort -z | xargs -r0 -I {} echo {}); do
 			ln -s $dng $(printf "${TMP}/${TRUNC_ARG}_%06d.dng" $i) #Since we're not touching the DNGs, we can link them from wherever to TMP!!! :) Super duper fast.
 			let i++
 			if [[ i -gt $FRAME_END ]]; then break; fi
@@ -1886,7 +1915,9 @@ for ARG in "${FILE_ARGS_ITER[@]}"; do #Go through FILE_ARGS_ITER array, copied f
 				start=$(echo "$range" | cut -d'-' -f1)
 				end=$(echo "$range" | cut -d'-' -f2) #Get start and end frames from the frame range
 				
-				$2 $3 $4 -o "${tmpOut}/${9}_" -f ${range} $6 --dng --batch | { #mlv_dump command. Uses frame range.
+				# -c -c (-p in @bouncyball's version) passes the DNG data through pretty brutally, but makes compression work (dcraw is OK with LZMA/LJ92).
+				# Perhaps make --relaxed a user trigger? After all, it might be better to be strict about things.
+				$2 $3 $4 -o "${tmpOut}/${9}_" -f ${range} $6 --dng --batch --relaxed | { #--relaxed makes it not freak out and develop nothing when it hits a corrupt block.
 					lastCur=0
 					while IFS= read -r line; do
 						output=$(echo $line | grep -E 'V.*A' | cut -d':' -f2 | cut -d$' ' -f1) #Hacked my way to the important bit.
@@ -1919,7 +1950,7 @@ for ARG in "${FILE_ARGS_ITER[@]}"; do #Go through FILE_ARGS_ITER array, copied f
 			count=$FRAME_START
 			for range in "${fileRanges[@]}"; do #Go through the subfolders sequentially
 				tmpOut=${TMP}/${range} #Use temporary folder. It will be named the same as the frame range.
-				for dng in ${tmpOut}/*.dng; do
+				for dng in $(find ${tmpOut} -maxdepth 1 -name "*.dng" -print0 | sort -z | xargs -r0 -I {} echo {}); do
 					if [ $count -gt $FRAME_END ]; then echo "ERROR! Count greater than end!"; fi
 					mv $dng $(printf "${TMP}/${TRUNC_ARG}_%06d.dng" $count) #Move dngs out sequentially, numbering them properly.
 					let count++
@@ -2067,7 +2098,7 @@ for ARG in "${FILE_ARGS_ITER[@]}"; do #Go through FILE_ARGS_ITER array, copied f
 		#Develop every nth file for averaging.
 		i=0
 		t=0
-		for file in $TMP/*.dng; do 
+		for file in $(find $TMP -maxdepth 1 -name "*.dng" -print0 | sort -z | xargs -r0 -I {} echo {}); do 
 			if [ `echo "(${i}+1) % ${n}" | bc` -eq 0 ]; then
 				$DCRAW -q 0 $BADPIXELS -r 1 1 1 1 -g $GAMMA -k $BLACK_LEVEL $SATPOINT -o 0 -T "${file}"
 				name=$(basename "$file")
@@ -2086,7 +2117,7 @@ for ARG in "${FILE_ARGS_ITER[@]}"; do #Go through FILE_ARGS_ITER array, copied f
 	elif [ $CAMERA_WB == true ]; then
 		echo -e "\033[1m${TRUNC_ARG}:\033[0m Retrieving Camera White Balance..."
 		
-		for file in $TMP/*.dng; do
+		for file in $(find $TMP -maxdepth 1 -name "*.dng" -print0 | sort -z | xargs -r0 -I {} echo {}); do
 			#dcraw a single file verbosely, to get the camera multiplier with awk.
 			BALANCE=`$DCRAW -T -w -v -c ${file} 2>&1 | awk '/multipliers/ { print $2, $3, $4 }'`
 			break

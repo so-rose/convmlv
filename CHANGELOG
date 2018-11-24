@@ -1,5 +1,11 @@
 [code]
 
+[b]v2.0.3[/b]: Some more bug fixes, based on a bug report.
+[size=8pt]*Fixed bug with split MLV files by piping the FRAMES output through "paste -s -d+ - | bc"[/size]
+[size=8pt]*Fixed the color-ext LUTs, which were unfixed due to laziness.[/size]
+[size=8pt]*Fixed mlv2badpixels.sh when mlv_dump wasn't on the PATH. Requred modding the script; a patch is in the main repo, and is distributed alongside binaries.[/size]
+[size=8pt]*Added documentation that symbolic linking support is required.[/size]
+
 [b]v2.0.2[/b]: Some fundamental & bug fixes, as well as now being tested to work with new compressed output.
 [size=8pt]*Fixed some mlv_dump versions wouldn't detect # of frames.[/size]
 [size=8pt]*Added set +f to ensure globbing is always enabled. Added a commented set -e to kill on error, which I intend to activate for 2.1.0.[/size]

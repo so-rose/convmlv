@@ -1,0 +1,38 @@
+3c3,10
+< # mlv2badpixels.sh
+---
+> 
+> # This is a very lightly modified version of the
+> # original mlv2badpixels.sh script,
+> # adding the ability to specify the mlv_dump
+> # path using -m. No other change was made.
+> #   - Sofus Rose <contact@sofusrose.com>
+> 
+> # mod_mlv2badpixels.sh
+59a67
+> 	-m           Specify mlv_dump path.
+81a90
+> MLV_DUMP_PATH=
+86c95
+< while getopts “hmo:v” OPTION; do
+---
+> while getopts “hm:o:v” OPTION; do
+92a102,103
+>   m)MLV_DUMP_PATH="$OPTARG"
+>     ;;
+118c129
+< camera_model=`mlv_dump -m -v "$MLV" | grep Camera"[[:space:]]"Model | head -1 | sed -e 's/^[ Camera \s Model: \s 0x]*//'`
+---
+> camera_model=`$MLV_DUMP_PATH -m -v "$MLV" | grep Camera"[[:space:]]"Model | head -1 | sed -e 's/^[ Camera \s Model: \s 0x]*//'`
+120,121c131,132
+< resolution=`mlv_dump -m -v "$MLV" | grep Res | head -1 | sed -e 's/^[ Res:]*//'`
+< pan=`mlv_dump -m -v "$MLV" | grep Pan | head -1 | sed -e 's/^[ Pan:]*//'`
+---
+> resolution=`$MLV_DUMP_PATH -m -v "$MLV" | grep Res | head -1 | sed -e 's/^[ Res:]*//'`
+> pan=`$MLV_DUMP_PATH -m -v "$MLV" | grep Pan | head -1 | sed -e 's/^[ Pan:]*//'`
+133,134c144,145
+< raw_width=`mlv_dump -m -v "$MLV" | grep width | head -1 | sed -e 's/^[ width]*//'`
+< raw_height=`mlv_dump -m -v "$MLV" | grep height | head -1 | sed -e 's/^[ height]*//'`
+---
+> raw_width=`$MLV_DUMP_PATH -m -v "$MLV" | grep width | head -1 | sed -e 's/^[ width]*//'`
+> raw_height=`$MLV_DUMP_PATH -m -v "$MLV" | grep height | head -1 | sed -e 's/^[ height]*//'`

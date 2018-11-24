@@ -71,7 +71,7 @@ set +f ## Ensure globbing is enabled.
 #~ set -e ## Stop script if something dies.
 
 #BASIC VARS
-VERSION="2.0.2" #Version string.
+VERSION="2.0.3" #Version string.
 INPUT_ARGS=$(echo "$@") #The original input argument string.
 
 if [[ $OSTYPE == "linux-gnu" ]]; then
@@ -108,7 +108,7 @@ setPaths() { #Repends on RES_PATH and PYTHON. Run this function if either is cha
 	MLV_DUMP="${RES_PATH}/mlv_dump" #Path to mlv_dump location.
 	RAW_DUMP="${RES_PATH}/raw2dng" #Path to raw2dng location.
 	CR_HDR="${RES_PATH}/cr2hdr" #Path to cr2hdr location.
-	MLV_BP="${RES_PATH}/mlv2badpixels.sh"
+	MLV_BP="${RES_PATH}/mod_mlv2badpixels.sh"
 	PYTHON_BAL="${RES_PATH}/balance.py"
 	PYTHON_SRANGE="${RES_PATH}/sRange.py"
 	BAL="${PYTHON} ${PYTHON_BAL}"
@@ -516,7 +516,7 @@ $(head "COLOR MANAGEMENT:")
 	 --> Note that convmlv only accepts up to 64x64x64 LUTs. You can resize LUTs using pylut (https://pypi.python.org/pypi/pylut).
 	 --> The pylut command to resize is 'pylut <yourx65lut>.cube --resize 64'. Alternatively, you can use pylut from Python (2X only).
 	 
-	 --> I reccommend Legal --> Data LUTs, as this conserves shadow/highlight detail for grading. Legal --> Legal looks better, but with detail loss.
+	 --> I recommend Legal --> Legal LUTs.
 	
 	
 $(head "CONFIG FILE:")
@@ -1402,7 +1402,7 @@ checkDeps() {
 		
 		#Essentials
 		if [ ! -f $MLV_DUMP ]; then
-			nFound "Binary" "${MLV_DUMP}" "Execution will halt" "Get it here: http://www.magiclantern.fm/forum/index.php?topic=7122.0."
+			nFound "Binary" "${MLV_DUMP}" "Execution will halt" "Get from convmlv repo or here: https://www.magiclantern.fm/forum/index.php?topic=18975.0."
 			isExit=true
 		fi
 		if [ ! -d ${COLOR_LUTS[0]} ]; then
@@ -1446,7 +1446,7 @@ checkDeps() {
 			nFound "Binary" "${RAW_DUMP}" "Execution will continue without .RAW processing capability" "Get it here: http://www.magiclantern.fm/forum/index.php?topic=5404.0."
 		fi
 		if [ ! -f $MLV_BP ]; then
-			nFound "SH Script" "${MLV_BP}" "Execution will continue without badpixel removal capability" "Get it here: https://bitbucket.org/daniel_fort/ml-focus-pixels/src"
+			nFound "SH Script" "${MLV_BP}" "Execution will continue without badpixel removal capability" "Get modded version from convmlv repo, or mod manually from here: https://bitbucket.org/daniel_fort/ml-focus-pixels/src"
 		fi
 		if [ ! -f $CR_HDR ]; then
 			nFound "Binary" "${CR_HDR}" "Execution will continue without Dual ISO processing capability" "Get it here: http://www.magiclantern.fm/forum/index.php?topic=7139.0"
@@ -1513,7 +1513,9 @@ mlvSet() {
 			
 	CAM_NAME=`echo "$camDump" | grep 'Camera Name' | cut -d "'" -f 2`
 	#~ FRAMES=`echo "$camDump" | awk '/Processed/ { print $2; }'` #Use actual processed frames as opposed to what the sometimes incorrect metadata thinks.
-	FRAMES=`echo "$camDump" | grep 'Frames Video' | sed 's/[[:alpha:] ]*: //'` #Some mlv_dumps don't show "Processed". In which case, yay metadata!
+	#~ FRAMES=`echo "$camDump" | grep 'Frames Video' | sed 's/[[:alpha:] ]*: //'` #Some mlv_dumps don't show "Processed". In which case, yay metadata!
+	FRAMES=`echo "$camDump" | grep 'Frames Video' | sed 's/[[:alpha:] ]*: //' | paste -s -d+ - | bc` #Extra M00, M01, etc. files were causing a bug. As such, we sum each line.
+	
 	RES_IN=`echo "$camDump" | grep "Res" | sed 's/[[:alpha:] ]*:  //'`
 	ISO=`echo "$camDump" | grep 'ISO' | sed 's/[[:alpha:] ]*:        //' | cut -d$'\n' -f2`
 	APERTURE=`echo "$camDump" | grep 'Aperture' | sed 's/[[:alpha:] ]*:    //' | cut -d$'\n' -f1`
@@ -1985,9 +1987,9 @@ for ARG in "${FILE_ARGS_ITER[@]}"; do #Go through FILE_ARGS_ITER array, copied f
 		touch $gen_bad
 		
 		if [ $EXT == "MLV" ] || [ $EXT == "mlv" ]; then
-			$MLV_BP -o $gen_bad $ARG
+			$MLV_BP -o $gen_bad -m "$MLV_DUMP" $ARG
 		elif [ $EXT == "RAW" ] || [ $EXT == "raw" ]; then
-			$MLV_BP -o $gen_bad $ARG
+			$MLV_BP -o $gen_bad -m "$MLV_DUMP" $ARG
 		fi
 		
 		if [[ ! -z $BADPIXEL_PATH ]]; then

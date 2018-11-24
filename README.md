@@ -18,6 +18,8 @@ See [http://www.magiclantern.fm/forum/index.php?topic=16799.0](http://www.magicl
 
 **Quick Fix**: On Mac, running `brew install --with-default-names grep` may fix the MLV --> DNG lag, as reported by @mutex1980.
 
+**NOTE on Symbolic Linking**: The filesystem that you're targeting with convmlv must support symbolic linking (though it *might* work without if you're not developing from DNGs).
+
 Full help page is below:
 
 ```text
